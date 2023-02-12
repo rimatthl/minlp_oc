@@ -5,11 +5,8 @@ Created on Wed Oct 26 12:01:09 2022
 @author: Leo
 """
 import numpy as np
-import scipy
-from pyscipopt import Model,quicksum,quickprod
-from pyscipopt.scip import Expr, GenExpr, ExprCons, Term, quicksum
-import itertools
-from typing import List, Tuple
+from pyscipopt import Model,quicksum
+from pyscipopt.scip import Expr, Term
 import time
 import matplotlib.pyplot as plt
 
@@ -36,7 +33,7 @@ class MIOCP:
 plot_iterations = True
 compute_obj_val = True
 plot_result = True
-plot_err = False
+plot_err = True
       
 threshold_x = 1e-2
 threshold_lam = 1e-2
@@ -44,6 +41,7 @@ threshold_lam = 1e-2
 solver_time=1000
 overall_time=1000
 
+#max # of doms is 99
 number_of_domains = 4
 
 gamma=1
@@ -140,7 +138,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     if k == K:
         product=multiply_matrix_with_array_of_expr(model, miocp.Rf, x[:n, 0].reshape(-1,1))
         for i in range(len(miocp.cf)):
-            model.addCons(product[i,0] == miocp.c0[i])     
+            model.addCons(product[i,0] == miocp.cf[i])     
     #standard solver is branch and bound
     # model.setSolver(solver)
     
@@ -157,7 +155,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     # model.writeProblem("modeltest%s.cip" %k)
     # INFEASIBLE POINT ISSUES EXIST HERE ALREADY
-    print('solve vcp call')
+    # print('solve vcp call')
     #n o rows, not n of steps
     K=phi.shape[1]
     n = xk.shape[0]
@@ -167,25 +165,19 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     variable_list=model.getVars()
     x = np.empty((n, number_of_steps+1), dtype=object)
     u = np.empty((m, number_of_steps), dtype=object)
-    # u_indices = [(int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])) for var in variable_list if 'u' in var.name]
     for var in variable_list:
         if 'u' in var.name:
             u[int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])]=var
-    # x_indices = [(int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])) for var in variable_list if 'x' in var.name]
     for var in variable_list:
         if 'x' in var.name:
             x[int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])]=var
     # print('x=',x)
     # print('u=',u)
-    print('k=',k)
-    print('K=',K)
+    # print('k=',k)
+    # print('K=',K)
     objvar=np.empty((K+1),dtype=object)
     if K == 0:
-        # print('big K cero')
-        # sum1=0
-        # for j in range(n):
-        #     for i in range(n):
-        #         sum1+= miocp.Q0[i,j] * x[i,1] * x[j,1]
+        print('big K cero')
         # sum1 = sum1 / 2
         sum1=quicksum(miocp.Q0[i,j] * x[i,0] * x[j,0] for i in range(n) for j in range(n)) / 2
         # print('sum1=',sum1)
@@ -218,21 +210,13 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
                         # print('current sum4 at i,j,step %s,%s,%s' %(i,j,step),sum4)
         sum5=sum5[0] / (delta_t/2)
         # print('sum5=1',sum5)
-        obj=sum1 + sum2 + sum3 + sum4 + sum5
+        obj = sum1 + sum2 + sum3 + sum4 + sum5
         objvar[k] = model.addVar(name="objvar", vtype= "C", lb=None, ub=None)
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
         
-        # model.optimize(
-        #     quicksum(miocp.Q0[i,j] * x[i,1] * x[j,1] for i in range(n) for j in range(n)) / 2
-        #     + miocp.q0.T @ x[:n,1]
-        #     + quicksum(miocp.Qf[i,j] * x[i,number_of_steps+1] * x[j,number_of_steps+1] for i in range(n) for j in range(n)) / 2
-        #     + miocp.qf.T @ x[:n,number_of_steps+1]
-        #     + quicksum(miocp.Lu[i,j] * u[i,step] * u[j,step] for i in range(m) for j in range(m) for step in range(1, number_of_steps+1)) * (delta_t / 2)
-        # )
-        # print('si')
     elif k == 0:
-        print('normal cero')
+        # print('normal cero')
         # sum1=0
         # for j in range(n):
         #     for i in range(n):
@@ -283,31 +267,20 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         objvar[k] = model.addVar(name="objvar0" , vtype= "C", lb=None, ub=None)
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
-        # print('check')
         
-        
-        # model.setObjective(obj,'minimize')
-        # model.optimize()
-        # model.optimize(
-        #     quicksum(miocp.Q0[i,j] * x[i,1] * x[j,1] for i in range(n) for j in range(n)) / 2
-        #     + miocp.q0.T @ x[:n,0]
-        #     + quicksum((x[i,number_of_steps] - phi[1,k+1,i])**2 for i in range(n)) / (2 * gamma)
-        #     + quicksum(miocp.Lu[i,j] * u[i,step] * u[j,step] for i in range(m) for j in range(m) for step in range(1, number_of_steps+1)) * (delta_t / 2)
-        # )
-        # print('cero')
     elif k == K:
-        print('step K')
-        print('schwierig')
-        for i in range(n):
-            print('x[%s,0]'%i,x[i,0])
-            print('phi[0,k-1,%s]'%i,phi[0,k-1,i])
+        # print('step K')
+        # print('schwierig')
+        # for i in range(n):
+        #     print('x[%s,0]'%i,x[i,0])
+        #     print('phi[0,k-1,%s]'%i,phi[0,k-1,i])
             # print('phi[0,k,%s]'%i,phi[0,k,i])
         sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
-        print('sum1=',sum1)
+        # print('sum1=',sum1)
         sum2=quicksum(miocp.Qf[i,j] * x[i,number_of_steps] * x[j,number_of_steps] for i in range(n) for j in range(n)) / 2
-        print('sum2=',sum2)
+        # print('sum2=',sum2)
         sum3=miocp.qf.T @ x[:n,number_of_steps]
-        print('sum3=',sum3)
+        # print('sum3=',sum3)
         sum4=0
         if len(miocp.Lu)==1:
             # print('case 1')
@@ -329,25 +302,19 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
                         sum4+=miocp.Lu[i,j] * u[i,step] * u[j,step]
                         # print('current sum4 at i,j,step %s,%s,%s' %(i,j,step),sum4)
         sum4=sum4[0] / (delta_t/2)
-        print('sum4',sum4)
+        # print('sum4',sum4)
         obj=sum1 + sum2 + sum3 + sum4
 
         # print('sum of sums: ', obj)
         objvar[k] = model.addVar(name="objvar%s" %K, vtype= "C", lb=None, ub=None)
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
-        # model.optimize(
-        #     quicksum((x[i,1] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
-        #     + quicksum(miocp.Qf[i,j] * x[i,number_of_steps+1] * x[j,number_of_steps+1] for i in range(n) for j in range(n)) / 2
-        #     + miocp.qf.T @ x[:n,number_of_steps+1]
-        #    + quicksum(miocp.Lu[i,j] * u[i,step] * u[j,step] for i in range(m) for j in range(m) for step in range(1, number_of_steps+1)) * (delta_t / 2))
-        print('step works fine')
     else:
-        print('step %s' %k)
+        # print('step %s' %k)
         # np.info(phi)
-        sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
+        sum1=quicksum((x[i,0] - phi[0,k,i])**2 for i in range(n)) / (2 * gamma)
         # print('sum1=',sum1)
-        sum2=quicksum((x[i,number_of_steps] - phi[1,k-1,i])**2 for i in range(n)) / (2 * gamma)
+        sum2=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
         # print('sum2=',sum2)
         sum3=0
         if len(miocp.Lu)==1:
@@ -378,33 +345,16 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         #INFEASIBLE CONSTRAINTS REACHED HERE ALREADY
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
-
-        # model.optimize(
-        #     quicksum((x[i,1] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
-        #     + quicksum((x[i,number_of_steps+1] - phi[2,k+1,i])**2 for i in range(n)) / (2 * gamma)
-        #     + quicksum(miocp.Lu[i,j] * u[i,step] * u[j,step] for i in range(m) for j in range(m) for step in range(number_of_steps)) * (delta_t / 2))
-    # if model.has_values():
-    #     for var in model.get_vars():
-    #         var.set_start_value(var.get_value())
-    # print('obj=',obj)
-    model.writeProblem("model%s.cip" %k)
+    
+    # model.writeProblem("model%s.cip" %k)
     model.hideOutput()
     model.optimize()
     
-    print('did i optimize?')
-    # i cannot figure out a way to warmstart the variables
-    # if model.getStatus() == "optimal":
-    #     print('yoo')
-    #     all_vars = model.getVars()
-    #     for var in all_vars:
-    #         if var.getVal() is not None:
-    #             var.setInitialValue(var.getVal())
-
     if model.getStatus() != "optimal":
         print('NOT OPTIMAL')
         print(model.getStatus())
         raise ValueError("Could not solve virtual control problem")
-    print('optimal')
+    # print('optimal')
     # print('now for assigning xk and uk')
     xk = np.empty((n, number_of_steps+1), dtype=object)
     for i in range(n):
@@ -415,18 +365,15 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     for i in range(m):
         for j in range(number_of_steps):
             uk[i, j] = u[i, j].getObj()
-            # print('uk[%s, %s]'%(i,j),uk[i, j])
-    # xk[:,:] = x[0:n, 0:number_of_steps+1]
-    # uk[:,:] = u[0:m, 0:number_of_steps]
-    print('assign lambda')
 
     if k != 0:
-        print('k is=',k)
+        # print('k is=',k)
         lam[0, k-1, :] = (xk[:, 0] - phi[0, k-1, :]) / gamma
     if k != K:
-        print('k is=',k)
+        # print('k is=',k)
         lam[1, k, :] = -(xk[:, number_of_steps] - phi[1, k, :]) / gamma
-    print('returns just fine')
+    # print('returns just fine')
+    print('obj value in solve vcp%s :' %k, model.getObjVal())
     return model.getObjVal()
 
 def add_iteration_errors(x_errors, lam_errors, x, lam):
@@ -438,7 +385,7 @@ def add_iteration_errors(x_errors, lam_errors, x, lam):
     for k in range(K):
         # print('x[z][:,0]=',x[k][:,0])
         # print('x[k-1][:,-1]=',x[k-1][:,-1])
-        x_error[k-1,:] = np.abs(x[k-1][:,-1] - x[k][:,0])
+        x_error[k,:] = np.abs(x[k][:,-1] - x[k+1][:,0])
     lam_error = np.abs(lam[1,:,:] - lam[0,:,:])
     x_errors.append(x_error)
     lam_errors.append(lam_error)
@@ -447,12 +394,11 @@ def get_max_errors(x, lam):
     print('max err call')
     K = lam.shape[1]
     max_error_x = 0
-    print('K=',K)
+    # print('K=',K)
     #there are only K-1 points in which the states coincide
     for k in range(K-1):
         max_error_x = max(max_error_x, np.max(np.abs(x[k][:, -1] - x[k+1][:, 0])))
-    max_error_lam = np.max(np.abs(lam[1,:,:] - lam[0,:,:])) if K > 0 else 0
-    
+    max_error_lam = np.max(np.abs(lam[1,:,:] - lam[0,:,:])) if K > 0 else 0    
     return (max_error_x, max_error_lam)
 
 def plot_errors(x_errors, lam_errors):
@@ -462,7 +408,7 @@ def plot_errors(x_errors, lam_errors):
     if K == 0:
         return
     n = x_errors[0].shape[1]
-    p_iter = range(1, number_of_iterations+1)
+    p_iter = range(number_of_iterations)
 
     plt.xlabel("Iteration")
     plt.legend(loc='upper right')
@@ -473,43 +419,54 @@ def plot_errors(x_errors, lam_errors):
     plt.show()
 
 
-def plot_iterations(ts, delta_t, x, u):
+
+def plot_iteration(ts, delta_t, x, u):
     print('i am in plot iterations')
     n = x[0].shape[0]
     m = u[0].shape[0]
     K = len(ts) - 2
-    plt.legend(loc='right')
+    fig, ax = plt.subplots()
     for k in range(K):
-        print('k=',k)
         number_of_steps = x[k].shape[1] - 1
         p_t = [ts[k] + delta_t * s for s in range(number_of_steps + 1)]
-        for i in range(1, n+1):
-            p_x = x[k][i-1,:]
+        for i in range(n):
+            p_x = x[k][i,:]
             label = f"x{i}" if k == 0 else ""
-            plt.plot(p_t, p_x, label=label, color=f'C{i-1}')
-        for i in range(1, m+1):
+            ax.plot(p_t, p_x, label=label, color=f'C{i}')
+    print('K=',K)
+    print('m=',m)
+    for k in range(K):
+        print('check1 in loop k =',k)
+        number_of_steps = u[k].shape[1]
+        print('check2')
+        p_t = [ts[k] + delta_t * s for s in range(number_of_steps + 1)]
+        print('check3')
+        for i in range(m+1):
+            print('check1 in loop i= %s' %i)
             p_u = np.zeros(number_of_steps + 1)
-            p_u[:number_of_steps] = u[k][i-1,:]
-            p_u[number_of_steps] = u[k][i-1,number_of_steps-1]
-            label = "u" if m == 1 else f"u{i}" if k == 0 else ""
-            plt.step(p_t, p_u, label=label, color=f'C{n+i-1}', where='post')
+            print('check4351')
+            p_u[:number_of_steps] = u[k][i,:]
+            print('check145')
+            p_u[number_of_steps] = u[k][i,number_of_steps-1]
+            print('i is %s, k is %d:' %(i,k), i,k)
+            label = "u" if m == 0 else  f"u{i}" if k == 0 else ""
+            ax.step(p_t, p_u, label=label, color=f'C{n+i}', where='post')
+    print('check plot')
+    ax.legend(loc='right')
     plt.show()
-
-
-def algo(miocp, ts: List[float], gamma: float, epsilon: float, delta_t: float, phi: np.ndarray = None):
+    
+def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarray = None):
     # Init
     n = len(miocp.q0)
     m = len(miocp.u_min) 
     K = len(ts) - 2
-    # x = [np.empty((0, 2), dtype=np.float64) for i in range(K)]
-    # u = [np.empty((0, 2), dtype=np.float64) for i in range(K)]
-    x = np.empty(K+1, dtype=np.object)
-    u = np.empty(K+1, dtype=np.object)
+    x = np.empty(K+1, dtype=object)
+    u = np.empty(K+1, dtype=object)
     for i in range(K+1):
-      x[i] = np.empty((0, 2), dtype=np.float64)
-    x = np.empty(K+1, dtype=np.object)
+      x[i] = np.empty(n, dtype=np.float64)
+    x = np.empty(K+1, dtype=object)
     for i in range(K+1):
-        u[i] = np.empty((0, 2), dtype=np.float64)
+        u[i] = np.empty(m, dtype=np.float64)
     lam = np.empty((2, K, n))
     x_errors = []
     lam_errors = []
@@ -521,46 +478,41 @@ def algo(miocp, ts: List[float], gamma: float, epsilon: float, delta_t: float, p
         ts[k+1] = tk + number_of_steps * delta_t
         x[k] = np.zeros((n, number_of_steps+1))
         u[k] = np.zeros((m, number_of_steps))
-    # print('u=',u)
     if phi.shape == (0,0,0):
         phi = np.zeros((2, K, n))
-        print('PHI=',phi)
+        # print('PHI=',phi)
     models = [None]*(K+1)
     for k in range(K+1):
         models[k] = get_vcp(miocp, x[k], u[k], delta_t, k, K)
     
     #iter
+    print("{:<5s} {:<8s} {:<10s} {:<10s}".format("Iter", "Time", "Error x", "Error λ"))
     iter = 1
     time_all = 0
     while True:
         start_time = time.time()
         for k in range(K+1):
-            print('in algo solve cast')
-            #WHY K PLUS ONE ?????
+            # print('in algo solve cast')
             solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
-        # print('solved models')
-        print('K=',K)
-        print('solve cast ended')
-        for k in range(K+1):
-            phi[0,k,:] = (1 - epsilon) * (x[k-1][:,-1] - gamma * lam[1,k-1,:]) + epsilon * (x[k][:,0] - gamma * lam[0,k-1,:])
-            phi[1,k,:] = (1 - epsilon) * (x[k][:,0] + gamma * lam[0,k-1,:]) + epsilon * (x[k-1][:,-1] + gamma * lam[1,k-1,:])
+        for k in range(K):
+            phi[0,k,:] = (1 - epsilon) * (x[k][:,-1] - gamma * lam[1,k,:]) + epsilon * (x[k+1][:,0] - gamma * lam[0,k,:])
+            phi[1,k,:] = (1 - epsilon) * (x[k+1][:,0] + gamma * lam[0,k,:]) + epsilon * (x[k][:,-1] + gamma * lam[1,k,:])
         # print('updated rules')
-        # print('added iteration errors?')
         add_iteration_errors(x_errors, lam_errors, x, lam)
-        # print('yes')
-        # print('found some max_error somehow')
         max_error_x, max_error_lam = get_max_errors(x, lam)
-        # print('yes')
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f'{iter:5} {elapsed_time:8.3f} {max_error_x:10.5f} {max_error_lam:10.5f}')
+        print("{:<5.0f} {:<8.3f} {:<10.5f} {:<10.5f}".format(iter, elapsed_time, max_error_x, max_error_lam))
+        # print(f'{iter:5} {elapsed_time:8.3f} {max_error_x:10.5f} {max_error_lam:10.5f}')
         if plot_iterations:
-            print('plot iterations apparently')
-            plot_iterations(ts, delta_t, x, u)
-        print('error lies not in plot iterations')
+            # print('plot iterations apparently')
+            plot_iteration(ts, delta_t, x, u)
+        # print('error lies not in plot iterations')
         if max_error_lam <= threshold_lam and max_error_x <= threshold_x:
             print("Continuous solution found!")
             print(f'Iterations: {iter}')
+            print()
+            print('successfully leaves algo')
             return x, u, x_errors, lam_errors
         iter += 1
         time_all += elapsed_time
@@ -622,7 +574,7 @@ def expr_sum(expr1,expr2):
         return expr
               
 def get_objective_value(miocp,x,u,delta_t):
-    print('obj value() call')
+    # print('obj value() call')
     K = len(x) - 1
     n = x[0].shape[0]
     obj_val = 0
@@ -632,51 +584,54 @@ def get_objective_value(miocp,x,u,delta_t):
         x_all = np.zeros((n, number_of_steps+1))
         index = number_of_steps+1
         for k in range(K, -1, -1):
-            print('somewhere here?')
-            s = x[k+1].shape[1]
-            print('calc s is fine')
-            x_all[:, (index-s+1):index] = x[k+1]
+            s = x[k].shape[1]
+            #habe in iter length 1 abgezogen
+            x_all[:, (index-s):index] = x[k]
             index -= s - 1
+        # print('loop works somehow')
         model_all = get_vcp(miocp, x_all, u_all, delta_t, 0, 0, True)
         obj_val = solve_vcp(model_all, miocp, 1, np.empty((0, 0, 0)), x_all, u_all, np.empty((0, 0, 0)), delta_t, 0)
         if test_number == 2 or test_number == 3:
             obj_val += 0.01 * 0.01
-        print("Objective value: ", obj_val)
+        # print("Objective value: ", obj_val)
     return x_all, u_all, obj_val
+
 def get_butcher_tableau():
     a = [[0, 0, 0, 0], [1/2, 0, 0, 0], [0, 1/2, 0, 0], [0, 0, 1, 0]]
     b = [[1/6], [1/3], [1/3], [1/6]]
     return (a,b)
 
 def save_data_file(filename, t0, delta_t, x, u):
-    print('saves data file ()')
+    # print('saves data file ()')
     n = x.shape[0]
     m = u.shape[0]
     number_of_steps = x.shape[1] - 1
-    data = np.empty((number_of_steps+2, 1+n+m))
+    data = np.empty((number_of_steps+2, 1+n+m),dtype=object)
     data[0, 0] = "t"
-    data[1:, 0] = t0 + delta_t * np.arange(0, number_of_steps+1)
+    data[1:, 0] = t0 + delta_t * np.arange(number_of_steps + 1)
     for i in range(n):
-        data[0, 1+i] = "x" + str(i+1)
-        data[1:, 1+i] = x[i, :]
+        data[0, 1 + i] = f"x{i + 1}"
+        data[1:, 1 + i] = x[i, :]
     for i in range(m):
-        data[0, 1+n+i] = "u" + str(i+1)
-        data[1:, 1+n+i] = np.concatenate((u[i, :], u[i, -1:]))
-    np.savetxt(filename + ".dat", data, delimiter=' ')
+        data[0, 1 + n + i] = f"u{i + 1}"
+        data[1:, 1 + n + i] = np.concatenate((u[i, :], [u[i, -1]]))
+
+    np.savetxt(f"{filename}.dat", data, delimiter=" ", fmt="%s")
 
 
 def save_error_data_file(filename, x_errors, lam_errors):
-    print('saves error data()')
+    # print('save error data file')
     number_of_iterations = len(x_errors)
-    data = np.empty((number_of_iterations+1, 3))
+    data = np.empty((number_of_iterations+1, 3), dtype=object)
+
     data[0, 0] = "Iteration"
     data[1:, 0] = np.arange(1, number_of_iterations+1)
     data[0, 1] = "x"
     data[1:, 1] = np.array([np.max(x_error) for x_error in x_errors])
     data[0, 2] = "lambda"
     data[1:, 2] = np.array([np.max(lam_error) for lam_error in lam_errors])
-    
-    np.savetxt(filename + ".dat", data, delimiter=' ')
+
+    np.savetxt(filename + ".dat", data, delimiter=' ', fmt='%s')
         
 
 
@@ -691,14 +646,22 @@ def run_miocp(miocp, t_max, phi=np.empty((0, 0, 0))):
         print("Iteration time: ", end - start)
         if compute_obj_val:
             start = time.time()
+            print('getting obj value:')
             x_all, u_all, obj_val = get_objective_value(miocp, x, u, delta_t)
             end = time.time()
+            print('got it')
             if plot_result:
+                print('plot_results')
                 if test_number == 3:
                     u_all = u_all[0, :] / 3 + 2 * u_all[1, :] / 3 + u_all[2, :]
-                plot_iterations([ts[0], ts[-1]], delta_t, [x_all], [u_all])
+                print('x_all=',x_all)
+                print('u_all=',u_all)
+                plot_iteration([ts[0], ts[-1]], delta_t, [x_all], [u_all])
+                print('printed interation')
                 filename = "example1_decomposed"
+                print('named filename')
                 save_data_file(filename, ts[0], delta_t, x_all, u_all)
+                print('saved datafile')
                 plt.savefig(filename + ".pdf")
             print("Overall time: ", end - start)
         if plot_err:
@@ -706,6 +669,7 @@ def run_miocp(miocp, t_max, phi=np.empty((0, 0, 0))):
             filename = "example1_gamma1"
             save_error_data_file(filename, x_errors, lam_errors)
             plt.savefig(filename + ".pdf")
+        print('code ends here')
     except Exception as e:
         print(e)
         print("")
