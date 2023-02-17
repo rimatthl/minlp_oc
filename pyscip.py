@@ -42,7 +42,7 @@ solver_time=1000
 overall_time=1000
 
 #max # of doms is 99
-number_of_domains = 1
+number_of_domains = 4
 
 gamma=1
 epsilon = 0.5
@@ -61,7 +61,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     number_of_steps = xk.shape[1] - 1
     # model=Model('vcp in %d' %k)
     model=Model('vcp in %d' %k)
-    print(k)
+    # print(k)
     x = np.empty((n, number_of_steps+1), dtype=object)
     for i in range(n):
         for j in range(number_of_steps+1):
@@ -136,7 +136,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
 
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     # model.writeProblem("modeltest%s.cip" %k)
-    print('solve vcp call')
+    # print('solve vcp call')
     K=phi.shape[1]
     n = xk.shape[0]
     m = uk.shape[0]
@@ -144,7 +144,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     variable_list=model.getVars()
     x = np.empty((n, number_of_steps+1), dtype=object)
     u = np.empty((m, number_of_steps), dtype=object)
-    print('nothing happened yet, about to set constraints')
+    # print('nothing happened yet, about to set constraints')
     for var in variable_list:
         if 'u' in var.name:
             u[int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])]=var
@@ -178,7 +178,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.addCons(objvar[k] >= obj)
         
     elif k == 0:
-        print('in k =0')
+        # print('in k =0')
         sum1=quicksum(miocp.Q0[i,j] * x[i,0] * x[j,0] for i in range(n) for j in range(n)) / 2
         sum2=miocp.q0.T @ x[:n,0]
         sum3=quicksum((x[i,number_of_steps] - phi[0,k,i])**2 for i in range(n)) / (2 * gamma)        
@@ -199,7 +199,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
             sum4=sum4[0] * (delta_t/2)
         obj=sum1 + sum2 + sum3 + sum4
         # print('gonna add var')
-        model.writeProblem("modeltest%s.cip" %k)
+        # model.writeProblem("modeltest%s.cip" %k)
         objvar[k] = model.addVar(name="objvar0" , vtype= "C", lb=None, ub=None)
         # print('tries to add variable')
         model.setObjective(objvar[k], "minimize")
@@ -208,7 +208,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
 
         
     elif k == K:
-        print('i am in k=K and xk =',xk)
+        # print('i am in k=K and xk =',xk)
         sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
         sum2=quicksum(miocp.Qf[i,j] * x[i,number_of_steps] * x[j,number_of_steps] for i in range(n) for j in range(n)) / 2
         sum3=miocp.qf.T @ x[:n,number_of_steps]
@@ -233,7 +233,9 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
     else:
-        sum1=quicksum((x[i,0] - phi[0,k,i])**2 for i in range(n)) / (2 * gamma)
+        # sum1=quicksum((x[i,0] - phi[0,k,i])**2 for i in range(n)) / (2 * gamma)
+        # sum2=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
+        sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
         sum2=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
         sum3=0
         if len(miocp.Lu)==1:
@@ -256,10 +258,10 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         objvar[k] = model.addVar(name="objvar%s" %k, vtype= "C", lb=None, ub=None)
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
-    model.writeProblem("model%s.cip" %k)
-    print('tries to solve:')
+    # model.writeProblem("model%s.cip" %k)
+    # print('tries to solve:')
     model.hideOutput()
-    print('tries to optimize')
+    # print('tries to optimize')
     model.optimize()
     if model.getStatus() != "optimal":
         print('NOT OPTIMAL')
@@ -279,7 +281,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         lam[0, k-1, :] = (xk[:, 0] - phi[0, k-1, :]) / gamma
     if k !=K:
         lam[1, k, :] = -(xk[:, -1] - phi[1, k, :]) / gamma
-    print('obj value in solve vcp%s :' %k, model.getObjVal()) 
+    # print('obj value in solve vcp%s :' %k, model.getObjVal()) 
     # print('lam[:,%d,:]' %k,lam)
     # print('State in domain %d' %k,xk)
     #need to return other things that were changed, too:
@@ -292,7 +294,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     return xk,uk,lam
 
 def add_iteration_errors(x_errors, lam_errors, x, lam):
-    print('iter err call')
+    # print('iter err call')
     K = lam.shape[1]
     n = lam.shape[2]
     x_error = np.zeros((K, n))
@@ -306,7 +308,7 @@ def add_iteration_errors(x_errors, lam_errors, x, lam):
     lam_errors.append(lam_error)
 
 def get_max_errors(x, lam):
-    print('max err call')
+    # print('max err call')
     K = lam.shape[1]
     max_error_x = 0
     # print('K=',K)
@@ -413,9 +415,9 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
     time_all = 0
     while True:
         start_time = time.time()
-        print('in iteration=',iter)
+        # print('in iteration=',iter)
         for k in range(K+1):
-            print('in algo solve cast numero %d' %k)
+            # print('in algo solve cast numero %d' %k)
             # print('model in %s'%k,models[k])
             x[k],u[k],lam=solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
             # val, phi, x[k], u[k], lam=solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
@@ -423,14 +425,14 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             #returns model.getObjVal(),phi,xk,uk,lam
             # print('could solve vcp')
             print('state x in domain %d after solving' %k,x[k])
-            print('lambda in domain %d after solving' %k, lam)
-            print('controls u in domain %d after solving' %k, u[k])
+            # print('lambda in domain %d after solving' %k, lam)
+            # print('controls u in domain %d after solving' %k, u[k])
 
         for k in range(K):
             phi[0,k,:] = (1 - epsilon) * (x[k][:,-1] - gamma * lam[1,k,:]) + epsilon * (x[k+1][:,0] - gamma * lam[0,k,:])
             phi[1,k,:] = (1 - epsilon) * (x[k+1][:,0] + gamma * lam[0,k,:]) + epsilon * (x[k][:,-1] + gamma * lam[1,k,:])
         # print('updated rules')
-        print('phi in iteration %s' %iter, phi)
+        # print('phi in iteration %s' %iter, phi)
         add_iteration_errors(x_errors, lam_errors, x, lam)
         max_error_x, max_error_lam = get_max_errors(x, lam)
         end_time = time.time()
@@ -477,9 +479,9 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             # print(conlen)
             models[k].delCons(conlist[conlen-1])        
             # models[k].writeProblem('freetransformed iteration %d in k = %d' %(iter,k))
-        print('jo')
-        if iter==2:
-            break
+        # print('jo')
+        # if iter==2:
+            # break
         iter += 1
         time_all += elapsed_time
         if time_all >= overall_time:
