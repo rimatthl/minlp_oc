@@ -30,7 +30,7 @@ class MIOCP:
       self.NLrhs = NLrhs
       self.constraint = constraint
 
-plot_iterations = False
+plot_iterations = True
 compute_obj_val = False
 plot_result = False
 plot_err = False
@@ -151,6 +151,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     for var in variable_list:
         if 'x' in var.name:
             x[int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])]=var
+    # print('assembled vars')
     objvar=np.empty((K+1),dtype=object)
     if K == 0:
         sum1=quicksum(miocp.Q0[i,j] * x[i,0] * x[j,0] for i in range(n) for j in range(n)) / 2
@@ -162,12 +163,12 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
             for step in range(number_of_steps):
                 for j in range(m):
                     for i in range(m):
-                        sum5+=miocp.Lu * u[i,step] * u[j,step]
+                        sum5= sum5 + miocp.Lu * u[i,step] * u[j,step]
         else:
             for step in range(number_of_steps):
                 for j in range(m):
                     for i in range(m):
-                        sum5+=miocp.Lu[i,j] * u[i,step] * u[j,step]        
+                        sum5= sum5 +miocp.Lu[i,j] * u[i,step] * u[j,step]        
         if isinstance(sum5, Expr):
             sum5=sum5 * (delta_t/2)
         else:
@@ -187,7 +188,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
             for step in range(number_of_steps):
                 for j in range(m):
                     for i in range(m):
-                        sum4+=miocp.Lu * u[i,step] * u[j,step]
+                        sum4 = sum4 + miocp.Lu * u[i,step] * u[j,step]
         else:
             for step in range(number_of_steps):
                 for j in range(m):
@@ -217,13 +218,13 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
             for step in range(number_of_steps):
                 for j in range(m):
                     for i in range(m):
-                        sum4+=miocp.Lu * u[i,step] * u[j,step]
+                        sum4 = sum4 +miocp.Lu * u[i,step] * u[j,step]
         else:
             # print('case2')
             for step in range(number_of_steps):
                 for j in range(m):
                     for i in range(m):
-                        sum4+=miocp.Lu[i,j] * u[i,step] * u[j,step]
+                        sum4= sum4 + miocp.Lu[i,j] * u[i,step] * u[j,step]
         if isinstance(sum4, Expr):
             sum4=sum4 * (delta_t/2)
         else:
@@ -233,6 +234,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
     else:
+        # print('i am in k=',k)
         # sum1=quicksum((x[i,0] - phi[0,k,i])**2 for i in range(n)) / (2 * gamma)
         # sum2=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
         sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
@@ -256,6 +258,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
             sum3=sum3[0] * (delta_t/2)       
         obj=sum1 + sum2 + sum3 
         objvar[k] = model.addVar(name="objvar%s" %k, vtype= "C", lb=None, ub=None)
+        # print('set cons')
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
     # model.writeProblem("model%s.cip" %k)
@@ -263,6 +266,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     model.hideOutput()
     # print('tries to optimize')
     model.optimize()
+    # print('done')
     if model.getStatus() != "optimal":
         print('NOT OPTIMAL')
         print(model.getStatus())
@@ -336,7 +340,7 @@ def plot_errors(x_errors, lam_errors):
     plt.show()
 
 def plot_iteration(ts, delta_t, x, u):
-    print('i am in plot iterations')
+    # print('i am in plot iterations')
     n = x[0].shape[0]
     m = u[0].shape[0]
     K = len(ts) - 2
@@ -348,22 +352,22 @@ def plot_iteration(ts, delta_t, x, u):
             p_x = x[k][i,:]
             label = f"x{i}" if k == 0 else ""
             ax.plot(p_t, p_x, label=label, color=f'C{i}')
-    print('K=',K)
-    print('m=',m)
-    for k in range(K):
-        print('check1 in loop k =',k)
+    # print('K=',K)
+    # print('m=',m)
+    # for k in range(K):
+    #     print('check1 in loop k =',k)
         number_of_steps = u[k].shape[1]
         # print('check2')
         p_t = [ts[k] + delta_t * s for s in range(number_of_steps + 1)]
         # print('check3')
         for i in range(m):
-            print('check1 in loop i= %s' %i)
+            # print('check1 in loop i= %s' %i)
             p_u = np.zeros(number_of_steps+1)
             # print('check4351')
             p_u[:number_of_steps] = u[k][i,:]
-            print('check145')
+            # print('check145')
             p_u[number_of_steps] = u[k][i,number_of_steps-1]
-            print('i is %s, k is %d:' %(i,k), i,k)
+            # print('i is %s, k is %d:' %(i,k), i,k)
             # if k==0:
             #     if m==1:
             #         label='u'
@@ -373,9 +377,9 @@ def plot_iteration(ts, delta_t, x, u):
             #     label=''
             label = "u" if m == 1 else  f"u{i}" if k == 0 else 'yo'
             ax.step(p_t, p_u, label=label, color=f'C{n+i}', where='post')
-    print('p_u=',p_u)
-    print('len p_u=',len(p_u))
-    print('check plot')
+    # print('p_u=',p_u)
+    # print('len p_u=',len(p_u))
+    # print('check plot')
     ax.legend(loc='right')
     plt.show()
     
@@ -424,7 +428,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             # print(models[k].getVars())
             #returns model.getObjVal(),phi,xk,uk,lam
             # print('could solve vcp')
-            print('state x in domain %d after solving' %k,x[k])
+            # print('state x in domain %d after solving' %k,x[k])
             # print('lambda in domain %d after solving' %k, lam)
             # print('controls u in domain %d after solving' %k, u[k])
 
@@ -481,7 +485,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             # models[k].writeProblem('freetransformed iteration %d in k = %d' %(iter,k))
         # print('jo')
         # if iter==2:
-            # break
+        #     break
         iter += 1
         time_all += elapsed_time
         if time_all >= overall_time:
@@ -562,7 +566,7 @@ def get_objective_value(miocp,x,u,delta_t):
         obj_val = solve_vcp(model_all, miocp, 1, np.empty((0, 0, 0)), x_all, u_all, np.empty((0, 0, 0)), delta_t, 0)
         if test_number == 2 or test_number == 3:
             obj_val += 0.01 * 0.01
-        # print("Objective value: ", obj_val)
+        print("Objective value: ", obj_val)
     return x_all, u_all, obj_val
 
 def get_butcher_tableau():
@@ -674,12 +678,12 @@ def test2():
     c = np.array([0, 0], dtype=np.float64)
     R0 = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
     c0 = np.array([0.01, 0, 0], dtype=np.float64)
-    RT = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]], dtype=np.float64)
-    cT = np.array([0, 0, 0], dtype=np.float64)
+    Rf = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]], dtype=np.float64)
+    cf = np.array([0, 0, 0], dtype=np.float64)
     Q0 = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]], dtype=np.float64)
     q0 = np.array([0, 0, 0], dtype=np.float64)
-    QT = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 0]], dtype=np.float64)
-    qT = np.array([-0.02, 0, 1], dtype=np.float64)
+    Qf = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 0]], dtype=np.float64)
+    qf = np.array([-0.02, 0, 1], dtype=np.float64)
     Lu = np.array([0], dtype=float)
     u_min = np.array([0], dtype=np.float64)
     u_max = np.array([1], dtype=np.float64)
@@ -696,7 +700,7 @@ def test2():
         rhs[2] = x[0, :]**2
         return rhs
     constraint = None
-    miocp = MIOCP(A, B, c, R0, c0, RT, cT, Q0, q0, QT, qT, Lu, u_min, u_max, NLrhs, constraint)
+    miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
     run_miocp(miocp, t_max)
 
 def test3():
@@ -789,7 +793,7 @@ def test4():
 def run_test():
     [test1,test2,test3,test4][test_number]()
 # run_test()
-test1()
-# test2()
+# test1()
+test2()
 # test3()
 # test4()
