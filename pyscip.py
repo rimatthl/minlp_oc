@@ -9,6 +9,8 @@ from pyscipopt import Model,quicksum
 from pyscipopt.scip import Expr, Term
 import time
 import matplotlib.pyplot as plt
+from multiprocessing.dummy import Pool as ThreadPool
+import itertools
 
 
 class MIOCP:
@@ -30,7 +32,7 @@ class MIOCP:
       self.NLrhs = NLrhs
       self.constraint = constraint
 
-plot_iterations = True
+plot_iterations = False
 compute_obj_val = False
 plot_result = False
 plot_err = False
@@ -340,46 +342,31 @@ def plot_errors(x_errors, lam_errors):
     plt.show()
 
 def plot_iteration(ts, delta_t, x, u):
-    # print('i am in plot iterations')
+    plt.style.use('ggplot')
     n = x[0].shape[0]
     m = u[0].shape[0]
     K = len(ts) - 2
     fig, ax = plt.subplots()
     for k in range(K):
         number_of_steps = x[k].shape[1] - 1
-        p_t = [ts[k] + delta_t * s for s in range(number_of_steps + 1)]
+        p_t = [ts[k] + delta_t * s for s in range(number_of_steps+1)]
         for i in range(n):
             p_x = x[k][i,:]
             label = f"x{i}" if k == 0 else ""
-            ax.plot(p_t, p_x, label=label, color=f'C{i}')
-    # print('K=',K)
-    # print('m=',m)
-    # for k in range(K):
-    #     print('check1 in loop k =',k)
+            ax.plot(p_t, p_x, label=label,ls='--', color=f'C{i}')
         number_of_steps = u[k].shape[1]
-        # print('check2')
-        p_t = [ts[k] + delta_t * s for s in range(number_of_steps + 1)]
-        # print('check3')
         for i in range(m):
-            # print('check1 in loop i= %s' %i)
             p_u = np.zeros(number_of_steps+1)
-            # print('check4351')
             p_u[:number_of_steps] = u[k][i,:]
-            # print('check145')
             p_u[number_of_steps] = u[k][i,number_of_steps-1]
-            # print('i is %s, k is %d:' %(i,k), i,k)
-            # if k==0:
-            #     if m==1:
-            #         label='u'
-            #     else:
-            #         label='u'+str(i)
-            # else:
-            #     label=''
-            label = "u" if m == 1 else  f"u{i}" if k == 0 else 'yo'
-            ax.step(p_t, p_u, label=label, color=f'C{n+i}', where='post')
-    # print('p_u=',p_u)
-    # print('len p_u=',len(p_u))
-    # print('check plot')
+            if k==0:
+                if m==1:
+                    label='u'
+                else:
+                    label='u'+str(i)
+            else:
+                label=''
+            ax.plot(p_t, p_u, label=label,ls='solid' ,color=f'C{n+i}')
     ax.legend(loc='right')
     plt.show()
     
@@ -417,32 +404,43 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
     print("{:<5s} {:<8s} {:<10s} {:<10s}".format("Iter", "Time", "Error x", "Error λ"))
     iter = 1
     time_all = 0
+    
     while True:
         start_time = time.time()
-        # print('in iteration=',iter)
         for k in range(K+1):
-            # print('in algo solve cast numero %d' %k)
-            # print('model in %s'%k,models[k])
             x[k],u[k],lam=solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
-            # val, phi, x[k], u[k], lam=solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
-            # print(models[k].getVars())
-            #returns model.getObjVal(),phi,xk,uk,lam
-            # print('could solve vcp')
-            # print('state x in domain %d after solving' %k,x[k])
-            # print('lambda in domain %d after solving' %k, lam)
-            # print('controls u in domain %d after solving' %k, u[k])
+        # Make the Pool of workers
+        # pool = ThreadPool(4)
+        # x,u = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
+        # res = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
+        # print(res)
+        # print('separate')
+        # print('x?')
+        # print(res[0])
+        # print('u?')
+        # print(res[1])
+        # print('lam?')
+        # print(res[2])
+        # print('done')
+        # # print(x)
+        # # print(u)
+        # break
+        
+        # results = pool.starmap(function, zip(list_a, list_b))
+        
+        # Or to pass a constant and an array:
+        
+        # results = pool.starmap(function, zip(itertools.repeat(constant), list_a))
 
+        
         for k in range(K):
             phi[0,k,:] = (1 - epsilon) * (x[k][:,-1] - gamma * lam[1,k,:]) + epsilon * (x[k+1][:,0] - gamma * lam[0,k,:])
             phi[1,k,:] = (1 - epsilon) * (x[k+1][:,0] + gamma * lam[0,k,:]) + epsilon * (x[k][:,-1] + gamma * lam[1,k,:])
-        # print('updated rules')
-        # print('phi in iteration %s' %iter, phi)
         add_iteration_errors(x_errors, lam_errors, x, lam)
         max_error_x, max_error_lam = get_max_errors(x, lam)
         end_time = time.time()
         elapsed_time = end_time - start_time
         print("{:<5.0f} {:<8.3f} {:<10.5f} {:<10.5f}".format(iter, elapsed_time, max_error_x, max_error_lam))
-        # print(f'{iter:5} {elapsed_time:8.3f} {max_error_x:10.5f} {max_error_lam:10.5f}')
         if plot_iterations:
             # print('plot iterations apparently')
             plot_iteration(ts, delta_t, x, u)
@@ -453,22 +451,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             print()
             print('successfully leaves algo')
             return x, u, x_errors, lam_errors
-        # print('trying to do the model update')
-        # tempmodel=[None]*(K+1)
-        # for k in range(K+1):
-        #     tempmodel[k]=Model()
-        #     for var in models[k].getVars():
-        #         if 'objvar' not in var.name:
-        #             # print('went in', var.name)
-                    
-        #             #duerfte auch nicht funktionieren, siehe integer vars!!!!
-        #             tempmodel[k].addVar(var.name)
-        #     for cons in models[k].getConss():
-        #         if 'objvar' not in cons.name:
-        #             # print(models[k].getConss())  
-        #             print('want to add corresponding Cons')
-        # models=tempmodel
-        # break
+
     
         # print('supposedly updated')     
         for k in range(K+1):
@@ -547,7 +530,7 @@ def expr_sum(expr1,expr2):
         return expr
               
 def get_objective_value(miocp,x,u,delta_t):
-    print('obj value() call')
+    # print('obj value() call')
     K = len(x) - 1
     n = x[0].shape[0]
     obj_val = 0
@@ -563,15 +546,13 @@ def get_objective_value(miocp,x,u,delta_t):
             index -= s - 1
         # print('loop works somehow')
         model_all = get_vcp(miocp, x_all, u_all, delta_t, 0, 0, True)
-        obj_val = solve_vcp(model_all, miocp, 1, np.empty((0, 0, 0)), x_all, u_all, np.empty((0, 0, 0)), delta_t, 0)
+        x_all,u_all,lam = solve_vcp(model_all, miocp, 1, np.empty((0, 0, 0)), x_all, u_all, np.empty((0, 0, 0)), delta_t, 0)
         if test_number == 2 or test_number == 3:
             obj_val += 0.01 * 0.01
-        print("Objective value: ", obj_val)
-    return x_all, u_all, obj_val
+        val=model_all.getObjVal()
+    return x_all, u_all, val
 
 def get_butcher_tableau():
-    # a = [[0, 0, 0, 0], [1/2, 0, 0, 0], [0, 1/2, 0, 0], [0, 0, 1, 0]]
-    # b = [[1/6], [1/3], [1/3], [1/6]]
     a = np.array([[0, 0, 0, 0], [1/2, 0, 0, 0], [0, 1/2, 0, 0], [0, 0, 1, 0]])
     b = np.array([[1/6], [1/3], [1/3], [1/6]])
     return (a,b)
@@ -621,10 +602,10 @@ def run_miocp(miocp, t_max, phi=np.empty((0, 0, 0))):
         print("Iteration time: ", end - start)
         if compute_obj_val:
             start = time.time()
-            print('getting obj value:')
-            x_all, u_all, obj_val = get_objective_value(miocp, x, u, delta_t)
+            # print('getting obj value:')
+            x_all,u_all, val = get_objective_value(miocp, x, u, delta_t)
+            print('val=',val)
             end = time.time()
-            print('got it')
             if plot_result:
                 print('plot_results')
                 if test_number == 3:
@@ -793,7 +774,9 @@ def test4():
 def run_test():
     [test1,test2,test3,test4][test_number]()
 # run_test()
-# test1()
-test2()
-# test3()
-# test4()
+if __name__ == '__main__':
+ 
+    test1()
+    # test2()
+    # test3()
+    # test4()
