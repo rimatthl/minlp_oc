@@ -4,13 +4,15 @@ Created on Wed Oct 26 12:01:09 2022
 
 @author: Leo
 """
+import sys
+import contextlib
 import numpy as np
 from pyscipopt import Model,quicksum
 from pyscipopt.scip import Expr, Term
 import time
 import matplotlib.pyplot as plt
-from multiprocessing.dummy import Pool as ThreadPool
-import itertools
+# from multiprocessing.dummy import Pool as ThreadPool
+# import itertools
 
 
 class MIOCP:
@@ -32,11 +34,12 @@ class MIOCP:
       self.NLrhs = NLrhs
       self.constraint = constraint
 
-plot_iterations = True
-compute_obj_val = False
-plot_result = False
+plot_iterations = False
+compute_obj_val = True
+plot_result = True
 plot_err = True
-      
+writefile=True
+
 threshold_x = 1e-2
 threshold_lam =1e-2
 
@@ -44,15 +47,14 @@ solver_time=1000
 overall_time=1000
 
 #max # of doms is 99
-number_of_domains = 4
+number_of_domains = 2
 
 gamma=1
 epsilon = 0.5
 
 number_of_time_steps=100
 
-
-test_number = 1
+testcase=1
 
 
 
@@ -328,22 +330,20 @@ def get_max_errors(x, lam):
     return (max_error_x, max_error_lam)
 
 def plot_errors(x_errors, lam_errors):
-    # print('plot err call')
     number_of_iterations = len(x_errors)
     K = x_errors[0].shape[0]
     if K == 0:
-        return
-    # n = x_errors[0].shape[1]
+        return None
     p_iter = range(number_of_iterations)
-
-    plt.xlabel("Iteration")
+    fig, ax = plt.subplots()
+    ax.set_xlabel("Iteration")
     p_x = [np.max(x) for x in x_errors]
-    plt.plot(p_iter, p_x, label='x')
+    ax.plot(p_iter, p_x, label='x')
     p_lam = [np.max(lam) for lam in lam_errors]
-    plt.plot(p_iter, p_lam, label='λ')
-    plt.title('Errors')
-    plt.legend(loc='upper right')
-    plt.show()
+    ax.plot(p_iter, p_lam, label='λ')
+    ax.set_title('Errors')
+    ax.legend(loc='upper right')
+    return fig
 
 def plot_iteration(ts, delta_t, x, u):
     plt.style.use('ggplot')
@@ -373,7 +373,9 @@ def plot_iteration(ts, delta_t, x, u):
             ax.plot(p_t, p_u, label=label,ls='solid' ,color=f'C{n+i}')
     plt.title('States x, Controls u')
     ax.legend(loc='right')
+    plt.gcf()
     plt.show()
+    return fig
     
 def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarray = None):
     # Init
@@ -406,7 +408,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
         models[k] = get_vcp(miocp, x[k], u[k], delta_t, k, K)
     
     #iter
-    print("{:<5s} {:<8s} {:<10s} {:<10s}".format("Iter", "Time", "Error x", "Error λ"))
+    print("{:<5s} {:<8s} {:<10s} {:<10s}".format("Iter", "Time", "Error x", "Error lambda"))
     iter = 1
     time_all = 0
     
@@ -458,7 +460,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             print("Continuous solution found!")
             print(f'Iterations: {iter}')
             print()
-            print('successfully leaves algo')
+            # print('successfully leaves algo')
             return x, u, x_errors, lam_errors
 
     
@@ -556,7 +558,7 @@ def get_objective_value(miocp,x,u,delta_t):
         # print('loop works somehow')
         model_all = get_vcp(miocp, x_all, u_all, delta_t, 0, 0, True)
         x_all,u_all,lam = solve_vcp(model_all, miocp, 1, np.empty((0, 0, 0)), x_all, u_all, np.empty((0, 0, 0)), delta_t, 0)
-        if test_number == 2 or test_number == 3:
+        if testcase == 2 or testcase == 3:
             obj_val += 0.01 * 0.01
         val=model_all.getObjVal()
     return x_all, u_all, val
@@ -613,28 +615,29 @@ def run_miocp(miocp, t_max, phi=np.empty((0, 0, 0))):
             start = time.time()
             # print('getting obj value:')
             x_all,u_all, val = get_objective_value(miocp, x, u, delta_t)
-            print('val=',val)
+            print('objective value =',val)
             end = time.time()
             if plot_result:
-                print('plot_results')
-                if test_number == 3:
+                # print('plot_results')
+                if testcase == 3:
                     u_all = u_all[0, :] / 3 + 2 * u_all[1, :] / 3 + u_all[2, :]
-                print('x_all=',x_all)
-                print('u_all=',u_all)
-                plot_iteration([ts[0], ts[-1]], delta_t, [x_all], [u_all])
-                print('printed interation')
-                filename = "example1_decomposed"
-                print('named filename')
+                # print('x_all=',x_all)
+                # print('u_all=',u_all)
+                fig= plot_iteration([ts[0], ts[-1]], delta_t, [x_all], [u_all])
+                # print('printed interation')
+                # filename = str('plot_res/resultplot_test'+ str(testcase)+'_#ofDom'+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon))
+                filename = 'testcase'+str(testcase)+'/plot_res/'+'n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)
+                # print('named filename')
                 save_data_file(filename, ts[0], delta_t, x_all, u_all)
-                print('saved datafile')
-                plt.savefig(filename + ".pdf")
+                # print('saved datafile')
+                fig.savefig(filename + ".pdf")
             print("Overall time: ", end - start)
         if plot_err:
-            plot_errors(x_errors, lam_errors)
-            filename = "example1_gamma1"
+            fig=plot_errors(x_errors, lam_errors)
+            filename = 'testcase'+str(testcase)+'/plot_err/'+'n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)
             save_error_data_file(filename, x_errors, lam_errors)
-            plt.savefig(filename + ".pdf")
-        print('code ends here')
+            fig.savefig(filename + ".pdf")
+        # print('code ends here')
     except Exception as e:
         print(e)
         print("")
@@ -781,11 +784,21 @@ def test4():
 
 
 def run_test():
-    [test1,test2,test3,test4][test_number]()
+    [test1,test2,test3,test4][testcase-1]()
+
 # run_test()
 if __name__ == '__main__':
- 
-    test1()
+    with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'.txt', 'w') as f:
+        # Redirect standard output to file
+        sys.stdout = f
+    
+        # Print statements will now be written to file
+        run_test()
+    
+        # Reset standard output to console
+        sys.stdout = sys.__stdout__
+
+    # test1()     
     # test2()
     # test3()
     # test4()
