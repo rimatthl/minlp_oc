@@ -38,16 +38,16 @@ plot_iterations = False
 compute_obj_val = True
 plot_result = True
 plot_err = True
-writefile=True
+writedoc=False
 
 threshold_x = 1e-2
 threshold_lam =1e-2
 
-solver_time=1000
-overall_time=1000
+solver_time=10000
+overall_time=10000
 
 #max # of doms is 99
-number_of_domains = 2
+number_of_domains = 4
 
 gamma=1
 epsilon = 0.5
@@ -788,16 +788,18 @@ def run_test():
 
 # run_test()
 if __name__ == '__main__':
-    with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'.txt', 'w') as f:
-        # Redirect standard output to file
-        sys.stdout = f
-    
-        # Print statements will now be written to file
+    if writedoc:
+        with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'.txt', 'w') as f:
+            # Redirect standard output to file
+            sys.stdout = f
+        
+            # Print statements will now be written to file
+            run_test()
+        
+            # Reset standard output to console
+            sys.stdout = sys.__stdout__
+    else:
         run_test()
-    
-        # Reset standard output to console
-        sys.stdout = sys.__stdout__
-
     # test1()     
     # test2()
     # test3()
