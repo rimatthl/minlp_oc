@@ -32,13 +32,13 @@ class MIOCP:
       self.NLrhs = NLrhs
       self.constraint = constraint
 
-plot_iterations = False
+plot_iterations = True
 compute_obj_val = False
 plot_result = False
-plot_err = False
+plot_err = True
       
 threshold_x = 1e-2
-threshold_lam = 1e-2
+threshold_lam =1e-2
 
 solver_time=1000
 overall_time=1000
@@ -139,6 +139,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     # model.writeProblem("modeltest%s.cip" %k)
     # print('solve vcp call')
+    # print('k=',k)
     K=phi.shape[1]
     n = xk.shape[0]
     m = uk.shape[0]
@@ -184,7 +185,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         # print('in k =0')
         sum1=quicksum(miocp.Q0[i,j] * x[i,0] * x[j,0] for i in range(n) for j in range(n)) / 2
         sum2=miocp.q0.T @ x[:n,0]
-        sum3=quicksum((x[i,number_of_steps] - phi[0,k,i])**2 for i in range(n)) / (2 * gamma)        
+        sum3=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)        
         sum4=0
         if len(miocp.Lu)==1:
             for step in range(number_of_steps):
@@ -249,7 +250,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
                     for i in range(m):
                         sum3+=miocp.Lu * u[i,step] * u[j,step]
         else:
-            print('case2')
+            # print('case2')
             for step in range(number_of_steps):
                 for j in range(m):
                     for i in range(m):
@@ -263,11 +264,13 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         # print('set cons')
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
-    # model.writeProblem("model%s.cip" %k)
+    # model.writeProblem("model_%s.cip" %k)
     # print('tries to solve:')
     model.hideOutput()
     # print('tries to optimize')
+    # print('about to optimize problem in k =',k)
     model.optimize()
+    # print('done')
     # print('done')
     if model.getStatus() != "optimal":
         print('NOT OPTIMAL')
@@ -325,20 +328,21 @@ def get_max_errors(x, lam):
     return (max_error_x, max_error_lam)
 
 def plot_errors(x_errors, lam_errors):
-    print('plot err call')
+    # print('plot err call')
     number_of_iterations = len(x_errors)
     K = x_errors[0].shape[0]
     if K == 0:
         return
-    n = x_errors[0].shape[1]
+    # n = x_errors[0].shape[1]
     p_iter = range(number_of_iterations)
 
     plt.xlabel("Iteration")
-    plt.legend(loc='upper right')
     p_x = [np.max(x) for x in x_errors]
     plt.plot(p_iter, p_x, label='x')
     p_lam = [np.max(lam) for lam in lam_errors]
     plt.plot(p_iter, p_lam, label='λ')
+    plt.title('Errors')
+    plt.legend(loc='upper right')
     plt.show()
 
 def plot_iteration(ts, delta_t, x, u):
@@ -347,7 +351,7 @@ def plot_iteration(ts, delta_t, x, u):
     m = u[0].shape[0]
     K = len(ts) - 2
     fig, ax = plt.subplots()
-    for k in range(K):
+    for k in range(K+1):
         number_of_steps = x[k].shape[1] - 1
         p_t = [ts[k] + delta_t * s for s in range(number_of_steps+1)]
         for i in range(n):
@@ -367,6 +371,7 @@ def plot_iteration(ts, delta_t, x, u):
             else:
                 label=''
             ax.plot(p_t, p_u, label=label,ls='solid' ,color=f'C{n+i}')
+    plt.title('States x, Controls u')
     ax.legend(loc='right')
     plt.show()
     
@@ -432,12 +437,15 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
         
         # results = pool.starmap(function, zip(itertools.repeat(constant), list_a))
 
-        
+        # print('optimized')
         for k in range(K):
             phi[0,k,:] = (1 - epsilon) * (x[k][:,-1] - gamma * lam[1,k,:]) + epsilon * (x[k+1][:,0] - gamma * lam[0,k,:])
             phi[1,k,:] = (1 - epsilon) * (x[k+1][:,0] + gamma * lam[0,k,:]) + epsilon * (x[k][:,-1] + gamma * lam[1,k,:])
+        # print('fixed phi')
         add_iteration_errors(x_errors, lam_errors, x, lam)
+        # print('added it errors')
         max_error_x, max_error_lam = get_max_errors(x, lam)
+        # print('got max errors')
         end_time = time.time()
         elapsed_time = end_time - start_time
         print("{:<5.0f} {:<8.3f} {:<10.5f} {:<10.5f}".format(iter, elapsed_time, max_error_x, max_error_lam))
@@ -445,6 +453,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             # print('plot iterations apparently')
             plot_iteration(ts, delta_t, x, u)
         # print('error lies not in plot iterations')
+        # print('plotted')
         if max_error_lam <= threshold_lam and max_error_x <= threshold_x:
             print("Continuous solution found!")
             print(f'Iterations: {iter}')
@@ -453,7 +462,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             return x, u, x_errors, lam_errors
 
     
-        # print('supposedly updated')     
+        # print('supposedly updated, errors too big')     
         for k in range(K+1):
             # print('what does it do')
             models[k].freeTransform()
