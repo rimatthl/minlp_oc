@@ -5,14 +5,13 @@ Created on Wed Oct 26 12:01:09 2022
 @author: Leo
 """
 import sys
-import contextlib
 import numpy as np
 from pyscipopt import Model,quicksum
 from pyscipopt.scip import Expr, Term
 import time
 import matplotlib.pyplot as plt
-# from multiprocessing.dummy import Pool as ThreadPool
-# import itertools
+from multiprocessing.dummy import Pool as ThreadPool
+import itertools
 
 
 class MIOCP:
@@ -39,6 +38,7 @@ compute_obj_val = True
 plot_result = True
 plot_err = True
 writedoc=False
+multiprocessed=True
 
 threshold_x = 1e-2
 threshold_lam =1e-2
@@ -47,7 +47,7 @@ solver_time=10000
 overall_time=10000
 
 #max # of doms is 99
-number_of_domains = 4
+number_of_domains = 8
 
 gamma=1
 epsilon = 0.5
@@ -414,61 +414,39 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
     
     while True:
         start_time = time.time()
-        for k in range(K+1):
-            x[k],u[k],lam=solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
-        # Make the Pool of workers
-        # pool = ThreadPool(4)
-        # x,u = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
-        # res = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
-        # print(res)
-        # print('separate')
-        # print('x?')
-        # print(res[0])
-        # print('u?')
-        # print(res[1])
-        # print('lam?')
-        # print(res[2])
-        # print('done')
-        # # print(x)
-        # # print(u)
-        # break
-        
-        # results = pool.starmap(function, zip(list_a, list_b))
-        
-        # Or to pass a constant and an array:
-        
-        # results = pool.starmap(function, zip(itertools.repeat(constant), list_a))
+        if multiprocessed:    
+            # Make the Pool of workers
+            pool = ThreadPool(4)
+            res = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
+            # # rearrange the x and u and lambda
+            resarr=np.array(res,dtype=object).reshape(K+1,3)
+            x=resarr[:,0]
+            u=resarr[:,1]
+            lam=resarr[K,2]   
+        else:
+            for k in range(K+1):
+                x[k],u[k],lam=solve_vcp(models[k], miocp, gamma, phi, x[k], u[k], lam, delta_t, k)
 
-        # print('optimized')
         for k in range(K):
             phi[0,k,:] = (1 - epsilon) * (x[k][:,-1] - gamma * lam[1,k,:]) + epsilon * (x[k+1][:,0] - gamma * lam[0,k,:])
             phi[1,k,:] = (1 - epsilon) * (x[k+1][:,0] + gamma * lam[0,k,:]) + epsilon * (x[k][:,-1] + gamma * lam[1,k,:])
-        # print('fixed phi')
+        
         add_iteration_errors(x_errors, lam_errors, x, lam)
-        # print('added it errors')
         max_error_x, max_error_lam = get_max_errors(x, lam)
-        # print('got max errors')
         end_time = time.time()
         elapsed_time = end_time - start_time
         print("{:<5.0f} {:<8.3f} {:<10.5f} {:<10.5f}".format(iter, elapsed_time, max_error_x, max_error_lam))
         if plot_iterations:
-            # print('plot iterations apparently')
             plot_iteration(ts, delta_t, x, u)
-        # print('error lies not in plot iterations')
-        # print('plotted')
         if max_error_lam <= threshold_lam and max_error_x <= threshold_x:
             print("Continuous solution found!")
             print(f'Iterations: {iter}')
             print()
-            # print('successfully leaves algo')
             return x, u, x_errors, lam_errors
 
     
-        # print('supposedly updated, errors too big')     
         for k in range(K+1):
-            # print('what does it do')
             models[k].freeTransform()
-            # print('jo')
             for var in models[k].getVars():
                 if 'objvar' in var.name:
                     models[k].delVar(var)
@@ -477,9 +455,6 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
             # print(conlen)
             models[k].delCons(conlist[conlen-1])        
             # models[k].writeProblem('freetransformed iteration %d in k = %d' %(iter,k))
-        # print('jo')
-        # if iter==2:
-        #     break
         iter += 1
         time_all += elapsed_time
         if time_all >= overall_time:
@@ -784,6 +759,7 @@ def test4():
 
 
 def run_test():
+    print('testcase'+str(testcase)+' n_of_doms='+str(number_of_domains)+' gamma='+str(gamma)+' eps = '+str(epsilon)+' thrshld_x='+str(threshold_x)+' thrshld_lam='+str(threshold_lam))
     [test1,test2,test3,test4][testcase-1]()
 
 # run_test()
