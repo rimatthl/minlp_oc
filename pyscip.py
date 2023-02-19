@@ -43,11 +43,11 @@ multiprocessed=True
 threshold_x = 1e-2
 threshold_lam =1e-2
 
-solver_time=10000
-overall_time=10000
+solver_time=1000
+overall_time=1000
 
 #max # of doms is 99
-number_of_domains = 8
+number_of_domains = 4
 
 gamma=1
 epsilon = 0.5
@@ -135,13 +135,13 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     if k == K:
         product=multiply_matrix_with_array_of_expr(model, miocp.Rf, x[:n, 0].reshape(-1,1))
         for i in range(len(miocp.cf)):
-            model.addCons(product[i,0] == miocp.cf[i])         
+            model.addCons(product[i,0] == miocp.cf[i])    
+    model.setRealParam("limits/time", solver_time)
+    # model.setBoolParam('history/allowtransfer',True)
+    # model.setBoolParam('reoptimization/storevarhistory',True)
     return model
 
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
-    # model.writeProblem("modeltest%s.cip" %k)
-    # print('solve vcp call')
-    # print('k=',k)
     K=phi.shape[1]
     n = xk.shape[0]
     m = uk.shape[0]
@@ -149,14 +149,12 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     variable_list=model.getVars()
     x = np.empty((n, number_of_steps+1), dtype=object)
     u = np.empty((m, number_of_steps), dtype=object)
-    # print('nothing happened yet, about to set constraints')
     for var in variable_list:
         if 'u' in var.name:
             u[int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])]=var
     for var in variable_list:
         if 'x' in var.name:
             x[int(var.name.split('(')[1].split(',')[0]), int(var.name.split('(')[1].split(',')[1][:-1])]=var
-    # print('assembled vars')
     objvar=np.empty((K+1),dtype=object)
     if K == 0:
         sum1=quicksum(miocp.Q0[i,j] * x[i,0] * x[j,0] for i in range(n) for j in range(n)) / 2
@@ -263,17 +261,12 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
             sum3=sum3[0] * (delta_t/2)       
         obj=sum1 + sum2 + sum3 
         objvar[k] = model.addVar(name="objvar%s" %k, vtype= "C", lb=None, ub=None)
-        # print('set cons')
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
     # model.writeProblem("model_%s.cip" %k)
-    # print('tries to solve:')
     model.hideOutput()
-    # print('tries to optimize')
-    # print('about to optimize problem in k =',k)
     model.optimize()
-    # print('done')
-    # print('done')
+
     if model.getStatus() != "optimal":
         print('NOT OPTIMAL')
         print(model.getStatus())
@@ -287,21 +280,11 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         for j in range(number_of_steps):
             uk[i, j] = model.getVal(u[i, j])
     
-    #lambda je Zeile nur fuer alle bis auf 1 intervall definiert 
     if k!=0:
         lam[0, k-1, :] = (xk[:, 0] - phi[0, k-1, :]) / gamma
     if k !=K:
         lam[1, k, :] = -(xk[:, -1] - phi[1, k, :]) / gamma
-    # print('obj value in solve vcp%s :' %k, model.getObjVal()) 
-    # print('lam[:,%d,:]' %k,lam)
-    # print('State in domain %d' %k,xk)
-    #need to return other things that were changed, too:
-    #lam
-    #uk
-    #xk    
-    # return model.getObjVal(),phi,xk,uk,lam
-    # print('lam after solving vcp in domain %d in function' %k,lam)
-    model.getObjVal()
+    # model.getObjVal()
     return xk,uk,lam
 
 def add_iteration_errors(x_errors, lam_errors, x, lam):
@@ -759,7 +742,7 @@ def test4():
 
 
 def run_test():
-    print('testcase'+str(testcase)+' n_of_doms='+str(number_of_domains)+' gamma='+str(gamma)+' eps = '+str(epsilon)+' thrshld_x='+str(threshold_x)+' thrshld_lam='+str(threshold_lam))
+    print('testcase:'+str(testcase)+' n_of_doms='+str(number_of_domains)+' gamma='+str(gamma)+' eps = '+str(epsilon)+' thrshld_x='+str(threshold_x)+' thrshld_lam='+str(threshold_lam))
     [test1,test2,test3,test4][testcase-1]()
 
 # run_test()
