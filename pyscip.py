@@ -40,8 +40,8 @@ plot_err = True
 writedoc=False
 multiprocessed=True
 
-threshold_x = 1e-3
-threshold_lam =1e-3
+threshold_x = 1e-2
+threshold_lam =1e-2
 
 solver_time=10000
 overall_time=1000
@@ -54,7 +54,7 @@ epsilon = 0.5
 
 number_of_time_steps=100
 
-testcase=1
+testcase=2
 
 
 
@@ -113,7 +113,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
                 x_tmp = np.empty((n, number_of_steps+1), dtype=object)
                 for i in range(n):
                     for step in range(number_of_steps+1):
-                        x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}")
+                        x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
                 for i in range(n):
                     for step in range(number_of_steps):
                         sum1=0
@@ -145,8 +145,8 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     # model.setCharParam('constraints/nonlinear/linearizeheursol','e')
     # model.setCharParam('constraints/nonlinear/checkvarlocks','b')
     # model.setBoolParam('constraints/setppc/cliquelifting',True)
-    # model.setBoolParam('reoptimization/storevarhistory',True)
-    # model.setBoolParam('history/allowtransfer',True)
+    model.setBoolParam('reoptimization/storevarhistory',True)
+    model.setBoolParam('history/allowtransfer',True)
     # model.setBoolParam('heuristics/completesol/beforepresol',False)
     # model.setBoolParam('constraints/indicator/addcouplingcons',True)
     return model
