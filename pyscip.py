@@ -37,17 +37,17 @@ plot_iterations = True
 compute_obj_val = True
 plot_result = True
 plot_err = True
-writedoc=False
+writedoc=True
 multiprocessed=True
 
 threshold_x = 1e-2
 threshold_lam =1e-2
 
-solver_time=10000
-overall_time=1000
+solver_time=100000
+overall_time=100000
 
 #max # of doms is 99
-number_of_domains = 4
+number_of_domains = 2
 
 gamma=1
 epsilon = 0.5
@@ -55,7 +55,7 @@ epsilon = 0.5
 number_of_time_steps=100
 
 testcase=2
-
+feas=1e-9
 
 
 #set up virtual control problem
@@ -128,27 +128,30 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
                     for j in range(number_of_stages):
                         sumbtimesstages = expr_sum(sumbtimesstages,  multiply_matrix_with_array_of_expr(model, b[j,0], stages[j][i][step]))
                     model.addCons((x[i][step + 1] - x[i][step]) / delta_t == sumbtimesstages)      
-    
     if k == 0:
         product=multiply_matrix_with_array_of_expr(model, miocp.R0, x[:n, 0].reshape(-1,1))
         for i in range(len(miocp.c0)):
-            model.addCons(product[i,0] == miocp.c0[i])
+            model.addCons(product[i,0] == miocp.c0[i])  
     if k == K:
         product=multiply_matrix_with_array_of_expr(model, miocp.Rf, x[:n, 0].reshape(-1,1))
         for i in range(len(miocp.cf)):
             model.addCons(product[i,0] == miocp.cf[i])    
     model.setRealParam("limits/time", solver_time)
+    model.setIntParam('display/verblevel',5)
     # model.setParam('presolving/maxrounds', 5)
-    if testcase==1:
-        model.setParam('numerics/feastol', 1e-9)
+    model.setParam('numerics/feastol', feas) #genuinely helps
         # model.setBoolParam('branching/relpscost/filtercandssym',True)
-    # model.setCharParam('constraints/nonlinear/linearizeheursol','e')
+    if testcase==3:
+        model.setCharParam('constraints/nonlinear/linearizeheursol','e')
     # model.setCharParam('constraints/nonlinear/checkvarlocks','b')
     # model.setBoolParam('constraints/setppc/cliquelifting',True)
     model.setBoolParam('reoptimization/storevarhistory',True)
+    # model.setIntParam('misc/usesymmetry',7)
+    # model.setBoolParam('constraints/and/delaysepa',False)
     model.setBoolParam('history/allowtransfer',True)
     # model.setBoolParam('heuristics/completesol/beforepresol',False)
     # model.setBoolParam('constraints/indicator/addcouplingcons',True)
+    # model.setIntParam('heuristics/crossover/nusedsols',3)
     return model
 
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
@@ -263,7 +266,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
     # model.writeProblem("model_%s.cip" %k)
-    model.hideOutput()
+    # model.hideOutput()
     model.optimize()
 
     if model.getStatus() != "optimal":
@@ -622,15 +625,15 @@ def test2():
     u_max = np.array([1], dtype=np.float64)
 
     def NLrhs(model, x, u):
-        # print('landed in nlrhs')
         n = len(x)
         number_of_steps = np.shape(u)[1]
-        rhs = np.empty((n,number_of_steps+1), dtype=object)       
+        rhs = np.empty((n,number_of_steps), dtype=object)       
         #define x dot respectively, prob via constraints
-        rhs[0] = x[1, :]
-        rhs[1] = 1 - 2 * u[0,0]
-        # print('test')
-        rhs[2] = x[0, :]**2
+        rhs[0] = x[1, :number_of_steps]
+        # rhs[1] = np.ones(number_of_steps) - 2 * u[0,:]
+        rhs[1] = 1 - 2 * u[0,:]
+        # print('landed in nlrhs',rhs[1])
+        rhs[2] = x[0, :number_of_steps]**2
         return rhs
     constraint = None
     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
@@ -729,7 +732,7 @@ def run_test():
 
 if __name__ == '__main__':
     if writedoc:
-        with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'.txt', 'w') as f:
+        with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'_feastol'+str(feas)+'.txt', 'w') as f:
             # Redirect standard output to file
             sys.stdout = f
             # Print statements will now be written to file
