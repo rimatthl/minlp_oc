@@ -1,0 +1,11 @@
+testcase:2 n_of_doms=1 gamma=1 eps = 0.5 thrshld_x=0.01 thrshld_lam=0.01
+Iter  Time     Error x    Error lambda
+1     336.834  0.00000    0.00000   
+Continuous solution found!
+Iterations: 1
+
+Iteration time:  337.0460002422333
+objective value = 2.308885833333333e-05
+Overall time:  0.20055580139160156
+zero-size array to reduction operation maximum which has no identity
+
