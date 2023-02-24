@@ -47,7 +47,7 @@ solver_time=100000
 overall_time=100000
 
 #max # of doms is 99
-number_of_domains = 2
+number_of_domains = 1
 
 gamma=1
 epsilon = 0.5
@@ -55,7 +55,7 @@ epsilon = 0.5
 number_of_time_steps=100
 
 testcase=2
-feas=1e-9
+feas=1e-6
 
 
 #set up virtual control problem
@@ -69,7 +69,9 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     x = np.empty((n, number_of_steps+1), dtype=object)
     for i in range(n):
         for j in range(number_of_steps+1):
+            # x[i, j] = model.addVar(name="x(%s,%s)" %(i,j), lb=None,ub=None,obj=xk[i,j])
             x[i, j] = model.addVar(name="x(%s,%s)" %(i,j), lb=None,ub=None,obj=xk[i,j])
+
     u = np.empty((m, number_of_steps), dtype=object)
     if fix_u:
         for i in range(m):
@@ -79,7 +81,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
         for i in range(m):
             for j in range(number_of_steps):       
                 u[i,j] = model.addVar(vtype='I',name="u(%s,%s)" %(i,j),lb=miocp.u_min[i],ub=miocp.u_max[i],obj=uk[i,j])
-                u[i,j]-=uk[i,j]
+                # u[i,j]-=uk[i,j]
     
     if miocp.constraint is not None:
         miocp.constraint(model,x,u)
@@ -109,25 +111,28 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
             a, b = get_butcher_tableau()
             number_of_stages = len(b)
             stages = [None] * number_of_stages
+            x_tmp=np.empty((number_of_stages,n,number_of_steps+1),dtype=object)
             for j in range(number_of_stages):
-                x_tmp = np.empty((n, number_of_steps+1), dtype=object)
-                for i in range(n):
-                    for step in range(number_of_steps+1):
-                        x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
+                # x_tmp[j] = np.empty((n, number_of_steps+1), dtype=object)
+                # for i in range(n):
+                #     for step in range(number_of_steps+1):
+                #         # x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
+                #         x_tmp[j,i,step] = Expr()
                 for i in range(n):
                     for step in range(number_of_steps):
                         sum1=0
                         for l in range(j):
                             sum1 = expr_sum(sum1,multiply_matrix_with_array_of_expr(model, a[j][l], stages[l][i][step]))
-                        Cons1=x[i][step] + delta_t * sum1
-                        model.addCons(x_tmp[i][step] == Cons1)
-                stages[j] = miocp.NLrhs(model, x_tmp, u)
+                        # Cons1=x[i][step] + delta_t * sum1
+                        x_tmp[j,i,step]=x[i][step] + delta_t * sum1
+                        # model.addCons(x_tmp[i][step] == Cons1)
+                stages[j] = miocp.NLrhs(model, x_tmp[j], u)
             for i in range(n):
                 for step in range(number_of_steps):
                     sumbtimesstages=0
                     for j in range(number_of_stages):
                         sumbtimesstages = expr_sum(sumbtimesstages,  multiply_matrix_with_array_of_expr(model, b[j,0], stages[j][i][step]))
-                    model.addCons((x[i][step + 1] - x[i][step]) / delta_t == sumbtimesstages)      
+                    model.addCons((x[i][step + 1] - x[i][step])  == sumbtimesstages * delta_t)      
     if k == 0:
         product=multiply_matrix_with_array_of_expr(model, miocp.R0, x[:n, 0].reshape(-1,1))
         for i in range(len(miocp.c0)):
@@ -141,17 +146,17 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     # model.setParam('presolving/maxrounds', 5)
     model.setParam('numerics/feastol', feas) #genuinely helps
         # model.setBoolParam('branching/relpscost/filtercandssym',True)
-    if testcase==3:
-        model.setCharParam('constraints/nonlinear/linearizeheursol','e')
+    # if testcase==2 or testcase==3:
+    #     model.setCharParam('constraints/nonlinear/linearizeheursol','i')
     # model.setCharParam('constraints/nonlinear/checkvarlocks','b')
     # model.setBoolParam('constraints/setppc/cliquelifting',True)
-    model.setBoolParam('reoptimization/storevarhistory',True)
+    # model.setBoolParam('reoptimization/storevarhistory',True)
     # model.setIntParam('misc/usesymmetry',7)
     # model.setBoolParam('constraints/and/delaysepa',False)
-    model.setBoolParam('history/allowtransfer',True)
+    # model.setBoolParam('history/allowtransfer',True)
     # model.setBoolParam('heuristics/completesol/beforepresol',False)
     # model.setBoolParam('constraints/indicator/addcouplingcons',True)
-    # model.setIntParam('heuristics/crossover/nusedsols',3)
+    # model.setIntParam('heuristics/crossover/nusedsols',10)
     return model
 
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
@@ -195,7 +200,6 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.addCons(objvar[k] >= obj)
         
     elif k == 0:
-        # print('in k =0')
         sum1=quicksum(miocp.Q0[i,j] * x[i,0] * x[j,0] for i in range(n) for j in range(n)) / 2
         sum2=miocp.q0.T @ x[:n,0]
         sum3=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)        
@@ -220,7 +224,6 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.addCons(objvar[k] >= obj)
         
     elif k == K:
-        # print('i am in k=K and xk =',xk)
         sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
         sum2=quicksum(miocp.Qf[i,j] * x[i,number_of_steps] * x[j,number_of_steps] for i in range(n) for j in range(n)) / 2
         sum3=miocp.qf.T @ x[:n,number_of_steps]
@@ -243,6 +246,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         objvar[k] = model.addVar(name="objvar%s" %k, vtype= "C",lb=None,ub=None)
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
+    
     else:
         sum1=quicksum((x[i,0] - phi[0,k-1,i])**2 for i in range(n)) / (2 * gamma)
         sum2=quicksum((x[i,number_of_steps] - phi[1,k,i])**2 for i in range(n)) / (2 * gamma)
@@ -265,6 +269,7 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         objvar[k] = model.addVar(name="objvar%s" %k, vtype= "C", ub=None) #lb=0
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
+   
     # model.writeProblem("model_%s.cip" %k)
     # model.hideOutput()
     model.optimize()
@@ -350,7 +355,7 @@ def plot_iteration(ts, delta_t, x, u):
                     label='u'+str(i)
             else:
                 label=''
-            ax.plot(p_t, p_u, label=label,ls='solid' ,color=f'C{n+i}')
+            ax.step(p_t, p_u, label=label,ls='solid' ,color=f'C{n+i}')
     plt.title('States x, Controls u')
     ax.legend(loc='right')
     plt.gcf()
@@ -394,7 +399,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
         start_time = time.time()
         if multiprocessed:    
             # Make the Pool of workers
-            pool = Pool(4) #number of cores
+            pool = Pool(2) #number of physical cores
             res = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
             # # rearrange the x and u and lambda
             resarr=np.array(res,dtype=object).reshape(K+1,3)
@@ -497,7 +502,6 @@ def expr_sum(expr1,expr2):
 def get_objective_value(miocp,x,u,delta_t):
     K = len(x) - 1
     n = x[0].shape[0]
-    obj_val = 0
     if compute_obj_val:
         u_all = np.hstack(u)
         number_of_steps = u_all.shape[1]
@@ -510,9 +514,9 @@ def get_objective_value(miocp,x,u,delta_t):
             index -= s - 1
         model_all = get_vcp(miocp, x_all, u_all, delta_t, 0, 0, True)
         x_all,u_all,lam = solve_vcp(model_all, miocp, 1, np.empty((0, 0, 0)), x_all, u_all, np.empty((0, 0, 0)), delta_t, 0)
-        if testcase == 2 or testcase == 3:
-            obj_val += 0.01 * 0.01
         val=model_all.getObjVal()
+        if testcase == 2 or testcase == 3:
+            val += 0.01 * 0.01
 
     return x_all, u_all, val
 
@@ -627,11 +631,11 @@ def test2():
     def NLrhs(model, x, u):
         n = len(x)
         number_of_steps = np.shape(u)[1]
-        rhs = np.empty((n,number_of_steps), dtype=object)       
+        rhs = np.empty((n,number_of_steps), dtype=object)  
         #define x dot respectively, prob via constraints
         rhs[0] = x[1, :number_of_steps]
         # rhs[1] = np.ones(number_of_steps) - 2 * u[0,:]
-        rhs[1] = 1 - 2 * u[0,:]
+        rhs[1] = np.ones(number_of_steps) - 2 * u[0,:]
         # print('landed in nlrhs',rhs[1])
         rhs[2] = x[0, :number_of_steps]**2
         return rhs
@@ -656,12 +660,13 @@ def test3():
     u_min = np.array([0, 0, 0, 0], dtype=np.float64)
     u_max = np.array([1, 1, 1, 1], dtype=np.float64)
     def NLrhs(model, x, u):
+        print('1',x)
         n = 3
         number_of_steps = u.shape[1]
-        rhs = np.empty((n,number_of_steps+1), dtype=object)
-        rhs[0] = x[1, :]
+        rhs = np.empty((n,number_of_steps), dtype=object)
+        rhs[0] = x[1, :number_of_steps]
         rhs[1,:number_of_steps] = 1 - 2 * u[0, :] - 0.5 * u[1, :] - 3 * u[2, :]
-        rhs[2] = x[0, :]**2
+        rhs[2] = x[0, :number_of_steps]**2
         return rhs
     def constraint(model, x, u):
         number_of_steps = u.shape[1]
@@ -686,37 +691,17 @@ def test4():
     Lu = np.array([0])
     u_min = np.array([0], dtype=np.float64)
     u_max = np.array([1], dtype=np.float64)
-    # def NLrhs(model, x, u):
-    #     n = 4
-    #     xi = 0.05236
-    #     number_of_steps = u.shape[1]
-    #     rhs = np.empty((n,), dtype=object)
-    #     rhs[0] = x[3, :] * (-0.877 * x[0, :] + x[2, :] - 0.088 * x[0, :] * x[2, :] + 0.47 * x[0, :]**2 - 0.019 * x[1, :]**2 - x[0, :]**2 * x[2, :] + 3.846 * x[0, :]**3 + 0.215 * xi - 0.28 * x[0, :]**2 * xi + 0.47 * x[0, :] * xi**2 - 0.63 * xi**3 - (0.215 * xi - 0.28 * x[0, :]**2 * xi - 0.63 * xi**3) * 2 * u[0, :])
-    #     rhs[1] = x[3, :] * x[2, :]
-    #     rhs[2] = x[3, :] * (-4.208 * x[0, :] - 0.396 * x[2, :] - 0.47 * x[0, :]**2 - 3.564 * x[0, :]**3 + 20.967 * xi - 6.265 * x[0, :]**2 * xi + 46 * x[0, :] * xi**2 - 61.4 * xi**3 - (20.967 * xi - 6.265 * x[0, :]**2 * xi - 61.4 * xi**3) * 2 * u[0, :])
-    #     rhs[3] = x[3, :] * 0
-    #     return rhs
     def NLrhs(model, x, u):
         n = 4
         xi = 0.05236
-        number_of_steps = x.shape[1]-1
+        number_of_steps = u.shape[1]
         rhs = np.empty((n,number_of_steps), dtype=object)
-        for step in range(number_of_steps):
-            rhs[0,step] = model.addVar(lb=None, ub=None, name='rhs[0][%d]' % step)
-        for step in range(number_of_steps):
-            model.addCons(rhs[0,step] == x[3, step] * (-0.877 * x[0, step] + x[2, step] - 0.088 * x[0, step] * x[2, step] + 0.47 * x[0, step] ** 2 - 0.019 * x[1, step] ** 2 - x[0, step] ** 2 * x[2, step] + 3.846 * x[0, step] ** 3 + 0.215 * xi - 0.28 * x[0, step] ** 2 * xi + 0.47 * x[0, step] * xi ** 2 - 0.63 * xi ** 3 - (0.215 * xi - 0.28 * x[0, step] ** 2 * xi - 0.63 * xi ** 3) * 2 * u[0, step]))
-        for step in range(number_of_steps):
-            rhs[1,step] = model.addVar(lb=None, ub=None, name='rhs[1][%d]' % step)
-        for step in range(number_of_steps):
-            model.addCons(rhs[1,step] == x[3, step] * x[2, step])
-        for step in range(number_of_steps):
-            rhs[2] = model.addVar(lb=None, ub=None, name='rhs[2][%d]' % step)
-        for step in range(number_of_steps):
-            model.addCons(rhs[2,step] == x[3, step] * (-4.208 * x[0, step] - 0.396 * x[2, step] - 0.47 * x[0, step] ** 2 - 3.564 * x[0, step] ** 3 + 20.967 * xi - 6.265 * x[0, step] ** 2 * xi + 46 * x[0, step] * xi ** 2 - 61.4 * xi ** 3 - (20.967 * xi - 6.265 * x[0, step] ** 2 * xi - 61.4 * xi ** 3) * 2 * u[0, step]))
-        for step in range(number_of_steps):
-            rhs[3,step] = model.addVar(lb=None, ub=None, name='rhs[3][%d]' % step)
-        for step in range(number_of_steps): 
-            model.addCons(rhs[3,step] == 0)
+        rhs[0] = x[3, :] * (-0.877 * x[0, :] + x[2, :] - 0.088 * x[0, :] * x[2, :] + 0.47 * x[0, :]**2 - 0.019 * x[1, :]**2 - x[0, :]**2 * x[2, :] + 3.846 * x[0, :]**3 + 0.215 * xi - 0.28 * x[0, :]**2 * xi + 0.47 * x[0, :] * xi**2 - 0.63 * xi**3 - (0.215 * xi - 0.28 * x[0, :]**2 * xi - 0.63 * xi**3) * 2 * u[0, :])
+        rhs[1] = x[3, :] * x[2, :]
+        rhs[2] = x[3, :] * (-4.208 * x[0, :] - 0.396 * x[2, :] - 0.47 * x[0, :]**2 - 3.564 * x[0, :]**3 + 20.967 * xi - 6.265 * x[0, :]**2 * xi + 46 * x[0, :] * xi**2 - 61.4 * xi**3 - (20.967 * xi - 6.265 * x[0, :]**2 * xi - 61.4 * xi**3) * 2 * u[0, :])
+        rhs[3] = x[3, :] * 0
+        return rhs
+
         return rhs
     def constraint(model, x, u):
         number_of_steps = u.shape[1]
