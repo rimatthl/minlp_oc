@@ -709,6 +709,60 @@ def test4():
             model.addCons(x[3, step] >= 0)
     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
     run_miocp(miocp, t_max)
+def test5():
+    #https://mintoc.de/index.php/Electric_Car
+    
+    t_max=10
+    # Problem parameters
+    R_bat = 0.05
+    V_alim = 150
+    R_m = 0.03
+    K_m = 0.27
+    L_m = 0.05
+    r = 0.33
+    K_r = 10
+    M = 250
+    g = 9.81
+    K_f = 0.03
+    rho = 1.293
+    S = 2
+    C_x = 0.4
+    imax=150
+    
+    A = np.array([[- R_m / L_m,-K_m / L_m,0,0], [0,0,0,0], [0,r / K_r,0,0],[0,0,0,0]],dtype=np.float64)
+    B = np.array([V_alim / L_m,0,0,0],  dtype = np.float64)
+    c = np.array([0,0,0,0], dtype=np.float64)
+    R0 = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+    c0 = np.array([0,0,0,0], dtype=np.float64)
+    Rf = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], dtype=np.float64)
+    cf = np.array([0,0,0,0], dtype=np.float64)
+    Q0 = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],  dtype=np.float64)
+    q0 = np.array([0,0,0,0], dtype=np.float64)
+    Qf = np.array([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], dtype=np.float64)
+    qf = np.array([0,0,0,1], dtype=np.float64)
+    Lu = np.array([0], dtype=np.float64)
+    u_min = np.array([-1], dtype=np.float64)
+    u_max = np.array([1],dtype=np.float64)
+    
+    def NLrhs(model, x, u):
+        n=4
+        number_of_steps = u.shape[1]
+        rhs = np.empty((n,number_of_steps), dtype=object)
+        rhs[0] =
+        rhs[1] =
+        rhs[2] =
+        rhs[3] =
+        return rhs
+    def constraint(model, x, u):
+        number_of_steps = u.shape[1]
+        for step in range(number_of_steps+1):
+            x[0,step].chgVarLb(-imax)
+            x[0,step].chgVarUb(imax)
+        for step in range(number_of_steps):
+            model.addCons(u[0,step] **2 == 1)
+            
+    miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
+    run_miocp(miocp, t_max) 
 
 
 def run_test():
