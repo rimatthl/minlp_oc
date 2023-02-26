@@ -40,6 +40,8 @@ plot_err = True
 writedoc=True
 multiprocessed=True
 
+usingadditionalvars=True
+
 threshold_x = 1e-2
 threshold_lam =1e-2
 
@@ -47,7 +49,7 @@ solver_time=100000
 overall_time=100000
 
 #max # of doms is 99
-number_of_domains = 1
+number_of_domains = 2
 
 gamma=1
 epsilon = 0.5
@@ -69,7 +71,6 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     x = np.empty((n, number_of_steps+1), dtype=object)
     for i in range(n):
         for j in range(number_of_steps+1):
-            # x[i, j] = model.addVar(name="x(%s,%s)" %(i,j), lb=None,ub=None,obj=xk[i,j])
             x[i, j] = model.addVar(name="x(%s,%s)" %(i,j), lb=None,ub=None,obj=xk[i,j])
 
     u = np.empty((m, number_of_steps), dtype=object)
@@ -81,7 +82,6 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
         for i in range(m):
             for j in range(number_of_steps):       
                 u[i,j] = model.addVar(vtype='I',name="u(%s,%s)" %(i,j),lb=miocp.u_min[i],ub=miocp.u_max[i],obj=uk[i,j])
-                # u[i,j]-=uk[i,j]
     
     if miocp.constraint is not None:
         miocp.constraint(model,x,u)
@@ -112,27 +112,43 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
             number_of_stages = len(b)
             stages = [None] * number_of_stages
             x_tmp=np.empty((number_of_stages,n,number_of_steps+1),dtype=object)
-            for j in range(number_of_stages):
-                # x_tmp[j] = np.empty((n, number_of_steps+1), dtype=object)
-                # for i in range(n):
-                #     for step in range(number_of_steps+1):
-                #         # x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
-                #         x_tmp[j,i,step] = Expr()
+            
+            if usingadditionalvars:
+                for j in range(number_of_stages):
+                    for i in range(n):
+                        for step in range(number_of_steps):
+                            sum1=0
+                            for l in range(j):
+                                sum1 = expr_sum(sum1,multiply_matrix_with_array_of_expr(model, a[j][l], stages[l][i][step]))
+                            x_tmp[j,i,step]=x[i][step] + delta_t * sum1
+                    stages[j] = miocp.NLrhs(model, x_tmp[j], u)
                 for i in range(n):
                     for step in range(number_of_steps):
-                        sum1=0
-                        for l in range(j):
-                            sum1 = expr_sum(sum1,multiply_matrix_with_array_of_expr(model, a[j][l], stages[l][i][step]))
-                        # Cons1=x[i][step] + delta_t * sum1
-                        x_tmp[j,i,step]=x[i][step] + delta_t * sum1
-                        # model.addCons(x_tmp[i][step] == Cons1)
-                stages[j] = miocp.NLrhs(model, x_tmp[j], u)
-            for i in range(n):
-                for step in range(number_of_steps):
-                    sumbtimesstages=0
-                    for j in range(number_of_stages):
-                        sumbtimesstages = expr_sum(sumbtimesstages,  multiply_matrix_with_array_of_expr(model, b[j,0], stages[j][i][step]))
-                    model.addCons((x[i][step + 1] - x[i][step])  == sumbtimesstages * delta_t)      
+                        sumbtimesstages=0
+                        for j in range(number_of_stages):
+                            sumbtimesstages = expr_sum(sumbtimesstages,  multiply_matrix_with_array_of_expr(model, b[j,0], stages[j][i][step]))
+                        model.addCons((x[i][step + 1] - x[i][step])  == sumbtimesstages * delta_t)
+            else:
+                for j in range(number_of_stages):
+                    x_tmp[j] = np.empty((n, number_of_steps+1), dtype=object)
+                    for i in range(n):
+                        for step in range(number_of_steps+1):
+                            x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
+                    for i in range(n):
+                        for step in range(number_of_steps):
+                            sum1=0
+                            for l in range(j):
+                                sum1 = expr_sum(sum1,multiply_matrix_with_array_of_expr(model, a[j][l], stages[l][i][step]))
+                            Cons1=x[i][step] + delta_t * sum1
+                            model.addCons(x_tmp[i][step] == Cons1)
+                    stages[j] = miocp.NLrhs(model, x_tmp[j], u)
+                for i in range(n):
+                    for step in range(number_of_steps):
+                        sumbtimesstages=0
+                        for j in range(number_of_stages):
+                            sumbtimesstages = expr_sum(sumbtimesstages,  multiply_matrix_with_array_of_expr(model, b[j,0], stages[j][i][step]))
+                        model.addCons((x[i][step + 1] - x[i][step])  == sumbtimesstages * delta_t)  
+    
     if k == 0:
         product=multiply_matrix_with_array_of_expr(model, miocp.R0, x[:n, 0].reshape(-1,1))
         for i in range(len(miocp.c0)):
@@ -399,7 +415,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
         start_time = time.time()
         if multiprocessed:    
             # Make the Pool of workers
-            pool = Pool(2) #number of physical cores
+            pool = Pool(4) #number of physical cores
             res = pool.starmap(solve_vcp, zip(models, itertools.repeat(miocp), itertools.repeat(gamma),itertools.repeat(phi), x, u, itertools.repeat(lam),itertools.repeat(delta_t) ,range(K+1)))
             # # rearrange the x and u and lambda
             resarr=np.array(res,dtype=object).reshape(K+1,3)
@@ -709,8 +725,7 @@ def test4():
             model.addCons(x[3, step] >= 0)
     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
     run_miocp(miocp, t_max)
-
-#def test5():
+# def test5():
 #     #https://mintoc.de/index.php/Electric_Car
     
 #     t_max=10
@@ -764,7 +779,6 @@ def test4():
             
 #     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
 #     run_miocp(miocp, t_max) 
-
 
 
 def run_test():
