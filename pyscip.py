@@ -37,10 +37,10 @@ plot_iterations = True
 compute_obj_val = True
 plot_result = True
 plot_err = True
-writedoc=True
+writedoc=False
 multiprocessed=True
 
-usingadditionalvars=True
+usingadditionalvars=False
 
 threshold_x = 1e-2
 threshold_lam =1e-2
@@ -49,14 +49,14 @@ solver_time=100000
 overall_time=100000
 
 #max # of doms is 99
-number_of_domains = 2
+number_of_domains = 1
 
 gamma=1
 epsilon = 0.5
 
 number_of_time_steps=100
 
-testcase=2
+testcase=4
 feas=1e-6
 
 
@@ -120,7 +120,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
                             sum1=0
                             for l in range(j):
                                 sum1 = expr_sum(sum1,multiply_matrix_with_array_of_expr(model, a[j][l], stages[l][i][step]))
-                            x_tmp[j,i,step]=x[i][step] + delta_t * sum1
+                            x_tmp[j][i,step]=x[i][step] + delta_t * sum1
                     stages[j] = miocp.NLrhs(model, x_tmp[j], u)
                 for i in range(n):
                     for step in range(number_of_steps):
@@ -133,14 +133,14 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
                     x_tmp[j] = np.empty((n, number_of_steps+1), dtype=object)
                     for i in range(n):
                         for step in range(number_of_steps+1):
-                            x_tmp[i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
+                            x_tmp[j,i, step] = model.addVar(vtype = "C", name = f"rhs_tmp_{j}_{i}_{step}",lb=None)
                     for i in range(n):
                         for step in range(number_of_steps):
                             sum1=0
                             for l in range(j):
                                 sum1 = expr_sum(sum1,multiply_matrix_with_array_of_expr(model, a[j][l], stages[l][i][step]))
                             Cons1=x[i][step] + delta_t * sum1
-                            model.addCons(x_tmp[i][step] == Cons1)
+                            model.addCons(x_tmp[j][i][step] == Cons1)
                     stages[j] = miocp.NLrhs(model, x_tmp[j], u)
                 for i in range(n):
                     for step in range(number_of_steps):
@@ -286,8 +286,8 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
    
-    # model.writeProblem("model_%s.cip" %k)
-    # model.hideOutput()
+    model.writeProblem("model_%s.cip" %k)
+    model.hideOutput()
     model.optimize()
 
     if model.getStatus() != "optimal":
@@ -676,7 +676,6 @@ def test3():
     u_min = np.array([0, 0, 0, 0], dtype=np.float64)
     u_max = np.array([1, 1, 1, 1], dtype=np.float64)
     def NLrhs(model, x, u):
-        print('1',x)
         n = 3
         number_of_steps = u.shape[1]
         rhs = np.empty((n,number_of_steps), dtype=object)
@@ -712,10 +711,10 @@ def test4():
         xi = 0.05236
         number_of_steps = u.shape[1]
         rhs = np.empty((n,number_of_steps), dtype=object)
-        rhs[0] = x[3, :] * (-0.877 * x[0, :] + x[2, :] - 0.088 * x[0, :] * x[2, :] + 0.47 * x[0, :]**2 - 0.019 * x[1, :]**2 - x[0, :]**2 * x[2, :] + 3.846 * x[0, :]**3 + 0.215 * xi - 0.28 * x[0, :]**2 * xi + 0.47 * x[0, :] * xi**2 - 0.63 * xi**3 - (0.215 * xi - 0.28 * x[0, :]**2 * xi - 0.63 * xi**3) * 2 * u[0, :])
-        rhs[1] = x[3, :] * x[2, :]
-        rhs[2] = x[3, :] * (-4.208 * x[0, :] - 0.396 * x[2, :] - 0.47 * x[0, :]**2 - 3.564 * x[0, :]**3 + 20.967 * xi - 6.265 * x[0, :]**2 * xi + 46 * x[0, :] * xi**2 - 61.4 * xi**3 - (20.967 * xi - 6.265 * x[0, :]**2 * xi - 61.4 * xi**3) * 2 * u[0, :])
-        rhs[3] = x[3, :] * 0
+        rhs[0] = x[3, :number_of_steps] * (-0.877 * x[0, :number_of_steps] + x[2, :number_of_steps] - 0.088 * x[0, :number_of_steps] * x[2, :number_of_steps] + 0.47 * x[0, :number_of_steps]**2 - 0.019 * x[1, :number_of_steps]**2 - x[0, :number_of_steps]**2 * x[2, :number_of_steps] + 3.846 * x[0, :number_of_steps]**3 + 0.215 * xi - 0.28 * x[0, :number_of_steps]**2 * xi + 0.47 * x[0, :number_of_steps] * xi**2 - 0.63 * xi**3 - (0.215 * xi - 0.28 * x[0, :number_of_steps]**2 * xi - 0.63 * xi**3) * 2 * u[0, :])
+        rhs[1] = x[3, :number_of_steps] * x[2, :number_of_steps]
+        rhs[2] = x[3, :number_of_steps] * (-4.208 * x[0, :number_of_steps] - 0.396 * x[2, :number_of_steps] - 0.47 * x[0, :number_of_steps]**2 - 3.564 * x[0, :number_of_steps]**3 + 20.967 * xi - 6.265 * x[0, :number_of_steps]**2 * xi + 46 * x[0, :number_of_steps] * xi**2 - 61.4 * xi**3 - (20.967 * xi - 6.265 * x[0, :number_of_steps]**2 * xi - 61.4 * xi**3) * 2 * u[0, :])
+        rhs[3] = np.zeros((1,number_of_steps))#x[3, :number_of_steps] * 0
         return rhs
 
         return rhs
