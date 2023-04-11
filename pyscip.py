@@ -37,27 +37,43 @@ plot_iterations = True
 compute_obj_val = True
 plot_result = True
 plot_err = True
+
+#plots of convergence rate
+plot_objvals=True
+#plot convergence rate only after full cycle of solving VCPs
+plot_objvalsbyfulldoms=False
+#plot ratio of value change
+divsofsteps=False
+
+#writedoc needs certain folders!
 writedoc=False
 multiprocessed=True
 
+#Optionally allow for controls to be continuous
+mixedintegercontrols=True
+#Optionally use additional variables to implement restrictions
 usingadditionalvars=False
 
+#Stopping Criteria
 threshold_x = 1e-2
 threshold_lam =1e-2
 
-solver_time=100000
-overall_time=100000
+solver_time=1500
+overall_time=2000
 
-#max # of doms is 99
-number_of_domains = 1
+number_of_domains = 1   
 
+#weights
 gamma=1
 epsilon = 0.5
 
-number_of_time_steps=100
+#precision
+number_of_time_steps=50
 
-testcase=4
-feas=1e-6
+testcase=1
+
+#strictness on the restrictions
+feas=1e-6 #1e-6 standard
 
 
 #set up virtual control problem
@@ -65,23 +81,31 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     n = xk.shape[0]
     m = uk.shape[0]
     number_of_steps = xk.shape[1] - 1
-    # model=Model('vcp in %d' %k)
     model=Model('vcp in %d' %k)
-    # print(k)
     x = np.empty((n, number_of_steps+1), dtype=object)
     for i in range(n):
         for j in range(number_of_steps+1):
             x[i, j] = model.addVar(name="x(%s,%s)" %(i,j), lb=None,ub=None,obj=xk[i,j])
 
     u = np.empty((m, number_of_steps), dtype=object)
-    if fix_u:
-        for i in range(m):
-            for j in range(number_of_steps):
-                u[i,j] = model.addVar(vtype='I',name="u(%s,%s)" %(i,j),lb=uk[i,j],ub=uk[i,j],obj=uk[i,j])
+    if mixedintegercontrols:
+        if fix_u:
+            for i in range(m):
+                for j in range(number_of_steps):
+                    u[i,j] = model.addVar(vtype='I',name="u(%s,%s)" %(i,j),lb=uk[i,j],ub=uk[i,j],obj=uk[i,j])
+        else:
+            for i in range(m):
+                for j in range(number_of_steps):       
+                    u[i,j] = model.addVar(vtype='I',name="u(%s,%s)" %(i,j),lb=miocp.u_min[i],ub=miocp.u_max[i],obj=uk[i,j])
     else:
-        for i in range(m):
-            for j in range(number_of_steps):       
-                u[i,j] = model.addVar(vtype='I',name="u(%s,%s)" %(i,j),lb=miocp.u_min[i],ub=miocp.u_max[i],obj=uk[i,j])
+        if fix_u:
+            for i in range(m):
+                for j in range(number_of_steps):
+                    u[i,j] = model.addVar(vtype='C',name="u(%s,%s)" %(i,j),lb=uk[i,j],ub=uk[i,j],obj=uk[i,j])
+        else:
+            for i in range(m):
+                for j in range(number_of_steps):       
+                    u[i,j] = model.addVar(vtype='C',name="u(%s,%s)" %(i,j),lb=miocp.u_min[i],ub=miocp.u_max[i],obj=uk[i,j])
     
     if miocp.constraint is not None:
         miocp.constraint(model,x,u)
@@ -159,8 +183,13 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
             model.addCons(product[i,0] == miocp.cf[i])    
     model.setRealParam("limits/time", solver_time)
     model.setIntParam('display/verblevel',5)
-    # model.setParam('presolving/maxrounds', 5)
     model.setParam('numerics/feastol', feas) #genuinely helps
+    
+    #some SCIP parameters to play around with
+    # model.setRealParam('memory/savefac', 0.5) #standard 0.81
+    # model.setBoolParam('misc/avoidmemout',False)
+    # model.setParam('presolving/maxrounds', 5)
+    # model.setRealParam('separating/cgmip/memorylimit',1.79769313486232e+308)
         # model.setBoolParam('branching/relpscost/filtercandssym',True)
     # if testcase==2 or testcase==3:
     #     model.setCharParam('constraints/nonlinear/linearizeheursol','i')
@@ -175,6 +204,7 @@ def get_vcp(miocp, xk, uk, delta_t,k,K,fix_u=False):
     # model.setIntParam('heuristics/crossover/nusedsols',10)
     return model
 
+#solver on VCP
 def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
     K=phi.shape[1]
     n = xk.shape[0]
@@ -285,8 +315,8 @@ def solve_vcp(model,miocp,gamma,phi,xk,uk,lam,delta_t,k):
         objvar[k] = model.addVar(name="objvar%s" %k, vtype= "C", ub=None) #lb=0
         model.setObjective(objvar[k], "minimize")
         model.addCons(objvar[k] >= obj)
-   
-    model.writeProblem("model_%s.cip" %k)
+  
+    # model.writeProblem("model_%s.cip" %k)
     model.hideOutput()
     model.optimize()
 
@@ -359,7 +389,6 @@ def plot_iteration(ts, delta_t, x, u):
             p_x = x[k][i,:]
             label = f"x{i}" if k == 0 else ""
             ax.plot(p_t, p_x, label=label,ls='--', color=f'C{i}')
-        number_of_steps = u[k].shape[1]
         for i in range(m):
             p_u = np.zeros(number_of_steps+1)
             p_u[:number_of_steps] = u[k][i,:]
@@ -372,14 +401,46 @@ def plot_iteration(ts, delta_t, x, u):
             else:
                 label=''
             ax.step(p_t, p_u, label=label,ls='solid' ,color=f'C{n+i}')
-    plt.title('States x, Controls u')
     ax.legend(loc='right')
     plt.gcf()
     plt.show()
     return fig
+
+def plotobjvals(iter,objval):
+    if iter==1:
+        return
+    p_iter=list(range(1, iter + 1))
+    #plot ratio of change of value?
+    if divsofsteps:
+        fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    else:
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    
+    # Plot the values against the iteration numbers in the first subplot (normal plot)
+    axs[0].plot(p_iter, objval)
+    axs[0].set_xlabel('Iteration')
+    axs[0].set_ylabel('Value')
+    axs[0].set_title('Normal plot')
+    
+    # Plot the values against the iteration numbers in the second subplot (logarithmic plot)
+    axs[1].semilogy(p_iter, objval)
+    axs[1].set_xlabel('Iteration')
+    axs[1].set_ylabel('Value (log scale)')
+    axs[1].set_title('Logarithmic plot')
+    
+    if divsofsteps:
+        if iter>2:
+            #Plot the ratios
+            ratios = [(objval[i] - objval[i+1]) / (objval[i-1] - objval[i]) for i in range(1, len(objval)-1)]
+            axs[2].plot(p_iter[1:-1], ratios)
+            axs[2].set_xlabel('Iteration')
+            axs[2].set_ylabel('Ratio')
+            axs[2].set_title('Visual plot of convergence')
+    plt.show()
+    return
+    
     
 def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarray = None):
-    # Init
     n = len(miocp.q0)
     m = len(miocp.u_min) 
     K = len(ts) - 2
@@ -393,6 +454,7 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
     lam = np.empty((2, K, n))
     x_errors = []
     lam_errors = []
+    objvals = []
     for k in range(K+1):
         tk = ts[k]   
         tkplusone = ts[k+1]
@@ -438,11 +500,21 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
         print("{:<5.0f} {:<8.3f} {:<10.5f} {:<10.5f}".format(iter, elapsed_time, max_error_x, max_error_lam))
         if plot_iterations:
             plot_iteration(ts, delta_t, x, u)
+        if plot_objvals:
+            objvals.append(get_objective_value(miocp,x,u,delta_t)[2])
+            print('Value in Iteration %s: ' %iter,objvals[iter-1])
+            plotobjvals(iter,objvals)
+        if plot_objvalsbyfulldoms:
+            if iter%number_of_domains == 0:
+                objvals.append(get_objective_value(miocp,x,u,delta_t)[2])
+                print('Value in Iteration %s: ' %(iter//number_of_domains),objvals[iter//number_of_domains-1])
+                plotobjvals(iter//number_of_domains,objvals)
+            
         if max_error_lam <= threshold_lam and max_error_x <= threshold_x:
             print("Continuous solution found!")
             print(f'Iterations: {iter}')
             print()
-            return x, u, x_errors, lam_errors
+            return x, u, x_errors, lam_errors,objvals
 
     
         for k in range(K+1):
@@ -452,7 +524,6 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
                     models[k].delVar(var)
             conlist=models[k].getConss()
             conlen=len(conlist)
-            # print(conlen)
             models[k].delCons(conlist[conlen-1])        
             # models[k].writeProblem('freetransformed iteration %d in k = %d' %(iter,k))
         iter += 1
@@ -460,19 +531,16 @@ def algo(miocp, ts, gamma: float, epsilon: float, delta_t: float, phi: np.ndarra
         if time_all >= overall_time:
             raise Exception("OVERALL TIME LIMIT")
             
-    
 
+#expansion of variable class from PySCIPOpt
 def multiply_matrix_with_array_of_expr(model,matr,exprarr):
-    # print('aufruf funktion')
     if isinstance(matr, float) or isinstance(matr, int) or isinstance(exprarr, Expr) :
         expr=matr*exprarr
         return expr
     m= len(matr)
     n = len(matr[0])
     n_ = len(exprarr)
-    # print('matrix ist ',m,'x',n,'-dimensional')
     l = n_//n
-    # print('array ist ',n,'x',l,'-dimensional')
     if  not isinstance(n_ % n, int):
         raise ValueError("The number of columns in A must match the number of rows in B")
     expr=np.empty((m, l), dtype=object)
@@ -492,6 +560,7 @@ def multiply_matrix_with_array_of_expr(model,matr,exprarr):
                 expr[i, j] = expr[i, j]+ summand
     return expr
 
+#expansion of Expr class from PySCIPOpt
 def expr_sum(expr1,expr2):
     if isinstance(expr1, int) or isinstance(expr1, float) or (isinstance(expr1, Expr) and isinstance(expr2, Expr)):
         return expr1+expr2
@@ -525,7 +594,6 @@ def get_objective_value(miocp,x,u,delta_t):
         index = number_of_steps+1
         for k in range(K, -1, -1):
             s = x[k].shape[1]
-            #habe in iter length 1 abgezogen
             x_all[:, (index-s):index] = x[k]
             index -= s - 1
         model_all = get_vcp(miocp, x_all, u_all, delta_t, 0, 0, True)
@@ -554,14 +622,12 @@ def save_data_file(filename, t0, delta_t, x, u):
     for i in range(m):
         data[0, 1 + n + i] = f"u{i + 1}"
         data[1:, 1 + n + i] = np.concatenate((u[i, :], [u[i, -1]]))
-
     np.savetxt(f"{filename}.dat", data, delimiter=" ", fmt="%s")
 
 
 def save_error_data_file(filename, x_errors, lam_errors):
     number_of_iterations = len(x_errors)
     data = np.empty((number_of_iterations+1, 3), dtype=object)
-
     data[0, 0] = "Iteration"
     data[1:, 0] = np.arange(1, number_of_iterations+1)
     data[0, 1] = "x"
@@ -576,7 +642,7 @@ def run_miocp(miocp, t_max, phi=np.empty((0, 0, 0))):
         ts = np.linspace(0, t_max, number_of_domains+1)
         delta_t = t_max / number_of_time_steps
         start = time.time()
-        x, u, x_errors, lam_errors = algo(miocp, ts, gamma, epsilon, delta_t, phi)
+        x, u, x_errors, lam_errors,objvals = algo(miocp, ts, gamma, epsilon, delta_t, phi)
         end = time.time()
         print("Iteration time: ", end - start)
         if compute_obj_val:
@@ -585,22 +651,21 @@ def run_miocp(miocp, t_max, phi=np.empty((0, 0, 0))):
             print('objective value =',val)
             end = time.time()
             if plot_result:
-                # print('plot_results')
                 if testcase == 3:
                     u_all = u_all[0, :] / 3 + 2 * u_all[1, :] / 3 + u_all[2, :]
-                # print('x_all=',x_all)
-                # print('u_all=',u_all)
+                u_all=np.reshape(u_all,(1, number_of_time_steps)) 
                 fig= plot_iteration([ts[0], ts[-1]], delta_t, [x_all], [u_all])
-                # filename = str('plot_res/resultplot_test'+ str(testcase)+'_#ofDom'+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon))
-                filename = 'testcase'+str(testcase)+'/plot_res/'+'n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)
+                filename = 'testcase'+str(testcase)+'/plot_res/'+'n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps ='+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)
                 save_data_file(filename, ts[0], delta_t, x_all, u_all)
                 fig.savefig(filename + ".pdf")
             print("Overall time: ", end - start)
         if plot_err:
             fig=plot_errors(x_errors, lam_errors)
-            filename = 'testcase'+str(testcase)+'/plot_err/'+'n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)
+            filename = 'testcase'+str(testcase)+'/plot_err/'+'n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps ='+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)
             save_error_data_file(filename, x_errors, lam_errors)
             fig.savefig(filename + ".pdf")
+        if plot_objvals:
+            None
     except Exception as e:
         print(e)
         print("")
@@ -626,7 +691,7 @@ def test1():
    miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
    run_miocp(miocp, t_max)
 
-#Fuller's Problem from Hante Paper
+#Fuller's IVP
 def test2():
     t_max=1
     A = np.array([[0, 0], [0, 0]], dtype=np.float64)
@@ -659,6 +724,7 @@ def test2():
     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
     run_miocp(miocp, t_max)
 
+#Fuller's Multi-Mode IVP
 def test3():
     t_max=1
     A = np.array([[0, 0], [0, 0]], dtype=np.float64)
@@ -690,6 +756,7 @@ def test3():
     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
     run_miocp(miocp, t_max)
 
+#F-8 Engine
 def test4():
     t_max = 1
     A = np.array([[0, 0], [0, 0]], dtype=np.float64)
@@ -724,6 +791,7 @@ def test4():
             model.addCons(x[3, step] >= 0)
     miocp = MIOCP(A, B, c, R0, c0, Rf, cf, Q0, q0, Qf, qf, Lu, u_min, u_max, NLrhs, constraint)
     run_miocp(miocp, t_max)
+    
 # def test5():
 #     #https://mintoc.de/index.php/Electric_Car
     
@@ -781,12 +849,12 @@ def test4():
 
 
 def run_test():
-    print('testcase:'+str(testcase)+' n_of_doms='+str(number_of_domains)+' gamma='+str(gamma)+' eps = '+str(epsilon)+' thrshld_x='+str(threshold_x)+' thrshld_lam='+str(threshold_lam))
+    print('testcase:'+str(testcase)+'_n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps='+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam))
     [test1,test2,test3,test4][testcase-1]()
 
 if __name__ == '__main__':
     if writedoc:
-        with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps = '+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'_feastol'+str(feas)+'.txt', 'w') as f:
+        with open('testcase'+str(testcase)+'/n_of_doms='+str(number_of_domains)+'_gamma='+str(gamma)+'_eps='+str(epsilon)+'_thrshld_x='+str(threshold_x)+'_thrshld_lam='+str(threshold_lam)+'_feastol'+str(feas)+'.txt', 'w') as f:
             # Redirect standard output to file
             sys.stdout = f
             # Print statements will now be written to file
